@@ -82,7 +82,7 @@ python src/decryptor.py
 - Enhancing model performance through different architectures and hyperparameter tuning.
 - Extending the approach to additional cipher types and historical datasets.
 
-
+# ru-version
 # Криптоанализ с применением нейросетей
 
 ## Описание проекта
