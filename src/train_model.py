@@ -39,6 +39,7 @@ def load_and_format_data(file_path):
 def main():
     model_name = "gpt2"  # base model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer.pad_token = tokenizer.eos_token  # добавляем эту строку
     model = AutoModelForCausalLM.from_pretrained(model_name)
 
     # Load training and validation data
