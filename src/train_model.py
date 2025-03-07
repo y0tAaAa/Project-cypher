@@ -1,9 +1,8 @@
-#sosi penis
-#sosi penis 2
 # src/train_model.py
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 from torch.utils.data import Dataset
+import os
 
 # Dataset class for cipher pairs
 class CipherDataset(Dataset):
@@ -39,9 +38,9 @@ def load_and_format_data(file_path):
     return formatted_data
 
 def main():
-    model_name = "gpt2"  # base model
+    model_name = "gpt2"  # Base model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token  # добавляем эту строку
+    tokenizer.pad_token = tokenizer.eos_token  # Set pad token for GPT-2
     model = AutoModelForCausalLM.from_pretrained(model_name)
 
     # Load training and validation data
@@ -51,7 +50,7 @@ def main():
     train_dataset = CipherDataset(train_texts, tokenizer)
     val_dataset = CipherDataset(val_texts, tokenizer)
 
-    # Set training arguments
+    # Set training arguments (loss_type removed)
     training_args = TrainingArguments(
         output_dir="./results",
         num_train_epochs=3,
@@ -63,8 +62,7 @@ def main():
         save_steps=500,
         weight_decay=0.01,
         logging_dir="./logs",
-        save_total_limit=2,
-        loss_type = 'ForCausalLMLoss'
+        save_total_limit=2
     )
 
     # Initialize Trainer
@@ -78,7 +76,10 @@ def main():
     # Start training
     trainer.train()
 
-    # Save fine-tuned model
+    # Ensure the fine_tuned_model directory exists
+    os.makedirs("fine_tuned_model", exist_ok=True)
+
+    # Save fine-tuned model and tokenizer
     trainer.save_model("fine_tuned_model")
     tokenizer.save_pretrained("fine_tuned_model")
 
