@@ -62,6 +62,7 @@ def main():
         weight_decay=0.01,
         logging_dir="./logs",
         save_total_limit=2,
+        loss_type = 'ForCausalLMLoss'
     )
 
     # Initialize Trainer
