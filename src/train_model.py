@@ -1,12 +1,15 @@
 # src/train_model.py
+import os
+# Ограничиваем видимость GPU только для устройства 0
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
 from torch.utils.data import Dataset
-import os
 
-# Dataset class for cipher pairs
+# Класс для датасета с криптопарами
 class CipherDataset(Dataset):
-    def __init__(self, texts, tokenizer, max_length=512):
+    def __init__(self, texts, tokenizer, max_length=256):  # уменьшенное значение max_length для экономии памяти
         self.texts = texts
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -28,7 +31,7 @@ class CipherDataset(Dataset):
         labels = input_ids.clone()
         return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
-# Load and format dataset
+# Функция для загрузки и форматирования данных
 def load_and_format_data(file_path):
     df = pd.read_csv(file_path)
     formatted_data = []
@@ -38,34 +41,41 @@ def load_and_format_data(file_path):
     return formatted_data
 
 def main():
-    model_name = "gpt2"  # Base model
+    model_name = "gpt2"  # базовая модель
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token  # Set pad token for GPT-2
+    # GPT-2 не имеет отдельного pad_token, поэтому используем eos_token
+    tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(model_name)
+    
+    # Включаем gradient checkpointing для экономии памяти
+    model.gradient_checkpointing_enable()
+    # Отключаем кеширование, несовместимое с checkpointing
+    model.config.use_cache = False
 
-    # Load training and validation data
+    # Загружаем тренировочные и валидационные данные
     train_texts = load_and_format_data("data/train.csv")
     val_texts = load_and_format_data("data/val.csv")
 
     train_dataset = CipherDataset(train_texts, tokenizer)
     val_dataset = CipherDataset(val_texts, tokenizer)
 
-    # Set training arguments (loss_type removed)
+    # Настройка тренинговых аргументов с минимальными размерами батча
     training_args = TrainingArguments(
         output_dir="./results",
         num_train_epochs=3,
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        evaluation_strategy="steps",
-        eval_steps=100,
+        per_device_train_batch_size=1,    # batch size 1 для экономии памяти
+        per_device_eval_batch_size=1,     # batch size 1 для оценки
+        gradient_accumulation_steps=2,    # эффективный batch size = 2
+        eval_strategy="steps",
+        eval_steps=500,                   # оценка реже, чтобы снизить нагрузку
         logging_steps=100,
-        save_steps=500,
+        save_steps=1000,
         weight_decay=0.01,
         logging_dir="./logs",
-        save_total_limit=2
+        save_total_limit=2,
+        fp16=True                       # использование fp16 для экономии видеопамяти
     )
 
-    # Initialize Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -73,13 +83,11 @@ def main():
         eval_dataset=val_dataset,
     )
 
-    # Start training
+    # Запуск тренировки
     trainer.train()
 
-    # Ensure the fine_tuned_model directory exists
+    # Создаем директорию для сохранения дообученной модели, если её нет
     os.makedirs("fine_tuned_model", exist_ok=True)
-
-    # Save fine-tuned model and tokenizer
     trainer.save_model("fine_tuned_model")
     tokenizer.save_pretrained("fine_tuned_model")
 
