@@ -1,16 +1,48 @@
 import sys
 import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 import psycopg2
 from datetime import datetime
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Устанавливаем кодировку UTF-8
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-app = Flask(__name__)
+# Получаем абсолютные пути к папкам templates и static
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))  # Папка src/ (PROJECT-CYPHER/src/)
+TEMPLATES_DIR = os.path.join(SRC_DIR, 'templates')  # PROJECT-CYPHER/src/templates/
+STATIC_DIR = os.path.join(SRC_DIR, 'static')  # PROJECT-CYPHER/src/static/
+
+# Инициализация Flask с правильными путями
+app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
+app.secret_key = 'your_secret_key_here'
+
+# Настройка Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+class User(UserMixin):
+    def __init__(self, user_id, username, email):
+        self.id = user_id
+        self.username = username
+        self.email = email
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, username, email FROM Users WHERE user_id = %s", (user_id,))
+    user = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if user:
+        return User(user[0], user[1], user[2])
+    return None
 
 class Decryptor:
     def __init__(self, model_path, cipher_type):
@@ -56,7 +88,151 @@ def get_db_connection():
         "dbname=llm user=postgres password=Vlad222 host=localhost port=5432"
     )
 
+# Главная страница
+@app.route('/')
+@login_required
+def index():
+    return render_template('index.html')
+
+# Страница входа
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        data = request.get_json()
+        email = data.get('email')
+        password = data.get('password')
+
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, username, email, password_hash FROM Users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if user and check_password_hash(user[3], password):
+            user_obj = User(user[0], user[1], user[2])
+            login_user(user_obj)
+            return jsonify({"message": "Login successful"})
+        else:
+            return jsonify({"error": "Invalid email or password"}), 401
+
+    return render_template('login.html')
+
+# Страница регистрации
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        data = request.get_json()
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+
+        if not username or not email or not password:
+            return jsonify({"error": "All fields are required"}), 400
+
+        password_hash = generate_password_hash(password)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING user_id",
+                (username, email, password_hash)
+            )
+            user_id = cursor.fetchone()[0]
+            conn.commit()
+            return jsonify({"message": "Registration successful"})
+        except psycopg2.IntegrityError as e:
+            conn.rollback()
+            return jsonify({"error": "Username or email already exists"}), 400
+        finally:
+            cursor.close()
+            conn.close()
+
+    return render_template('register.html')
+
+# Выход
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login', success='logout'))
+
+# Страница табличных данных
+@app.route('/data')
+@login_required
+def data():
+    return render_template('data.html')
+
+# Страница истории
+@app.route('/history')
+@login_required
+def history():
+    return render_template('history.html')
+
+# Страница настроек
+@app.route('/settings')
+@login_required
+def settings():
+    return render_template('settings.html')
+
+# Маршрут для получения попыток дешифровки
+@app.route('/attempts')
+@login_required
+def get_attempts():
+    sort_by = request.args.get('sort', 'start_time')
+    order = request.args.get('order', 'asc')
+    cipher_type = request.args.get('cipher_type')
+
+    query = """
+        SELECT 
+            da.attempt_id, 
+            c.name AS cipher_name, 
+            m.name AS model_name, 
+            da.start_time, 
+            da.success,
+            c.encrypted_text,
+            dr.model_output
+        FROM Decryption_Attempts da
+        JOIN Cipher c ON da.cipher_id = c.cipher_id
+        JOIN Model m ON da.model_id = m.model_id
+        LEFT JOIN Decryption_Result dr ON c.cipher_id = dr.cipher_id
+        WHERE da.user_id = %s
+    """
+    params = [current_user.id]
+
+    if cipher_type:
+        query += " AND c.cipher_type = %s"
+        params.append(cipher_type)
+
+    query += f" ORDER BY {sort_by} {'ASC' if order == 'asc' else 'DESC'}"
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    attempts = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return jsonify([
+        {
+            "attempt_id": attempt[0],
+            "cipher_name": attempt[1],
+            "model_name": attempt[2],
+            "start_time": attempt[3].isoformat(),
+            "success": attempt[4],
+            "encrypted_text": attempt[5],
+            "decrypted_text": attempt[6]
+        }
+        for attempt in attempts
+    ])
+
+# Маршрут для дешифровки
 @app.route('/decrypt', methods=['POST'])
+@login_required
 def decrypt_text():
     data = request.get_json()
     ciphertext = data.get('ciphertext')
@@ -73,47 +249,40 @@ def decrypt_text():
     cursor = conn.cursor()
 
     try:
-        # 1. Проверяем, есть ли шифр с name = "Caesar Cipher"
-        cursor.execute("SELECT cipher_id FROM Ciphers WHERE name = %s", ("Caesar Cipher",))
-        cipher_result = cursor.fetchone()
-        if cipher_result:
-            cipher_id = cipher_result[0]
-        else:
-            # Если шифра нет, добавляем его
-            cursor.execute("""
-                INSERT INTO Ciphers (name, historical_period, origin, encryption_principles, encrypted_text, discovery_date)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING cipher_id
-            """, ("Caesar Cipher", "Ancient", "Rome", "Shift by 3", ciphertext, datetime.now().date()))
-            cipher_id = cursor.fetchone()[0]
+        # 1. Создаем новую запись в таблице Cipher для каждой попытки
+        cursor.execute("""
+            INSERT INTO Cipher (name, historical_period, origin, encryption_principles, encrypted_text, discovery_date)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING cipher_id
+        """, ("Caesar Cipher", "Ancient", "Rome", "Shift by 3", ciphertext, datetime.now().date()))
+        cipher_id = cursor.fetchone()[0]
 
-        # 2. Проверяем, есть ли модель в таблице Models
-        cursor.execute("SELECT model_id FROM Models WHERE name = %s AND version = %s", ("GPT-2", "1.0"))
+        # 2. Проверяем, есть ли модель в таблице Model
+        cursor.execute("SELECT model_id FROM Model WHERE name = %s AND version = %s", ("GPT-2", "1.0"))
         model_result = cursor.fetchone()
         if model_result:
             model_id = model_result[0]
         else:
-            # Если модели нет, добавляем её
             cursor.execute("""
-                INSERT INTO Models (name, specialization, version)
-                VALUES (%s, %s, %s)
+                INSERT INTO Model (name, specialization, version, usage_date)
+                VALUES (%s, %s, %s, %s)
                 RETURNING model_id
-            """, ("GPT-2", "Decryption", "1.0"))
+            """, ("GPT-2", "Decryption", "1.0", datetime.now().date()))
             model_id = cursor.fetchone()[0]
 
         # 3. Регистрируем попытку расшифровки
         cursor.execute("""
-            INSERT INTO Decryption_Attempts (cipher_id, model_id, start_time, end_time, success, correctness_percentage)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO Decryption_Attempts (cipher_id, model_id, user_id, start_time, end_time, success, percent_correct)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING attempt_id
-        """, (cipher_id, model_id, start_time, end_time, True, 0.0))  # correctness_percentage пока 0
+        """, (cipher_id, model_id, current_user.id, start_time, end_time, True, 0.0))
         attempt_id = cursor.fetchone()[0]
 
         # 4. Сохраняем результат расшифровки
         cursor.execute("""
-            INSERT INTO Decryption_Results (attempt_id, model_output, similarity_measure, readability_level)
+            INSERT INTO Decryption_Result (cipher_id, model_output, similarity, readability)
             VALUES (%s, %s, %s, %s)
-        """, (attempt_id, decrypted, 0.0, 0.0))  # similarity_measure и readability_level пока 0
+        """, (cipher_id, decrypted, 0.0, 0.0))
 
         conn.commit()
 
@@ -126,63 +295,80 @@ def decrypt_text():
 
     return jsonify({"ciphertext": ciphertext, "decrypted_text": decrypted})
 
+# Инициализация базы данных
 if __name__ == "__main__":
-    # Проверяем, что таблицы существуют (можно закомментировать после первого запуска)
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    # Создание таблицы Users
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Ciphers (
+        CREATE TABLE IF NOT EXISTS Users (
+            user_id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            email VARCHAR(100) UNIQUE NOT NULL,
+            password_hash VARCHAR(256) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Создание остальных таблиц (без удаления)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS Cipher (
             cipher_id SERIAL PRIMARY KEY,
-            name VARCHAR(100) NOT NULL UNIQUE,
-            historical_period VARCHAR(50),
-            origin VARCHAR(50),
+            name VARCHAR(100) NOT NULL,
+            cipher_type VARCHAR(50),
+            historical_period VARCHAR(100),
+            origin VARCHAR(100),
             encryption_principles TEXT,
             encrypted_text TEXT,
             discovery_date DATE
         )
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Models (
+        CREATE TABLE IF NOT EXISTS Model (
             model_id SERIAL PRIMARY KEY,
             name VARCHAR(50) NOT NULL,
-            specialization VARCHAR(50),
+            specialization VARCHAR(100),
             version VARCHAR(20),
-            CONSTRAINT unique_model UNIQUE (name, version)
+            usage_date DATE
         )
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Decryption_Attempts (
             attempt_id SERIAL PRIMARY KEY,
-            cipher_id INT NOT NULL,
-            model_id INT NOT NULL,
+            cipher_id INT,
+            model_id INT,
+            user_id INT,
             start_time TIMESTAMP,
             end_time TIMESTAMP,
             success BOOLEAN,
-            correctness_percentage DECIMAL(5,2) CHECK (correctness_percentage BETWEEN 0 AND 100),
-            FOREIGN KEY (cipher_id) REFERENCES Ciphers(cipher_id),
-            FOREIGN KEY (model_id) REFERENCES Models(model_id)
+            percent_correct DECIMAL(5,2),
+            FOREIGN KEY (cipher_id) REFERENCES Cipher(cipher_id),
+            FOREIGN KEY (model_id) REFERENCES Model(model_id),
+            FOREIGN KEY (user_id) REFERENCES Users(user_id)
         )
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Decryption_Results (
+        CREATE TABLE IF NOT EXISTS Decryption_Result (
             result_id SERIAL PRIMARY KEY,
-            attempt_id INT NOT NULL,
+            cipher_id INT,
             model_output TEXT,
-            similarity_measure DECIMAL(5,2) CHECK (similarity_measure BETWEEN 0 AND 100),
-            readability_level DECIMAL(5,2) CHECK (readability_level BETWEEN 0 AND 100),
-            FOREIGN KEY (attempt_id) REFERENCES Decryption_Attempts(attempt_id)
+            similarity DECIMAL(5,2),
+            readability DECIMAL(5,2),
+            FOREIGN KEY (cipher_id) REFERENCES Cipher(cipher_id)
         )
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS Manual_Corrections (
+        CREATE TABLE IF NOT EXISTS Manual_Correction (
             correction_id SERIAL PRIMARY KEY,
-            result_id INT NOT NULL,
-            corrector VARCHAR(100),
-            changed_percentage DECIMAL(5,2) CHECK (changed_percentage BETWEEN 0 AND 100),
+            result_id INT,
+            corrected_by VARCHAR(100),
+            percent_changed DECIMAL(5,2),
             final_text TEXT,
-            FOREIGN KEY (result_id) REFERENCES Decryption_Results(result_id)
+            FOREIGN KEY (result_id) REFERENCES Decryption_Result(result_id)
         )
     """)
+
     conn.commit()
     cursor.close()
     conn.close()

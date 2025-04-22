@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nastavenia</title>
+    <link rel="icon" type="image/x-icon" href="https://via.placeholder.com/16x16.png?text=F">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="has-text-centered">
+                <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+                <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+            </div>
+            <div class="level">
+                <div class="level-left">
+                    <h1 class="title">Nastavenia</h1>
+                </div>
+                <div class="level-right">
+                    <a class="button is-light" href="/logout">
+                        <span class="icon"><i class="material-icons">logout</i></span>
+                        <span>Odhlásiť sa</span>
+                    </a>
+                </div>
+            </div>
+            <div class="columns is-centered">
+                <div class="column is-6">
+                    <div class="box">
+                        <h2 class="subtitle">Zmena hesla</h2>
+                        <form id="change-password-form">
+                            <div class="field">
+                                <label class="label">Staré heslo</label>
+                                <div class="control">
+                                    <input class="input" type="password" name="old_password" required>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Nové heslo</label>
+                                <div class="control">
+                                    <input class="input" type="password" name="new_password" required>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-info is-fullwidth" type="button" onclick="changePassword()">Zmeniť heslo</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+            <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+            <p>© 2025 Projekt Cypher</p>
+        </div>
+    </footer>
+
+    <script>
+        function changePassword() {
+            alert('Funkcia zmeny hesla zatiaľ nie je implementovaná.');
+            // В будущем здесь можно добавить логику для отправки запроса на сервер
+        }
+    </script>
+</body>
+</html>

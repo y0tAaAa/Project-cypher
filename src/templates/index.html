@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dešifrovanie</title>
+    <link rel="icon" type="image/x-icon" href="https://via.placeholder.com/16x16.png?text=F">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="has-text-centered">
+                <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+                <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+            </div>
+            <div class="columns">
+                <div class="column is-3">
+                    <p>Ahoj, napíš niečo!</p>
+                    <div class="timeline">
+                        <div class="timeline-header">
+                            <input class="input is-small" type="text" placeholder="Hľadať..." onkeyup="filterTimeline()">
+                        </div>
+                        <div id="timeline-content">
+                            <!-- Сообщение по умолчанию, если нет попыток -->
+                            <div class="timeline-item">
+                                <div class="timeline-marker"></div>
+                                <div class="timeline-content">
+                                    <p>Zatiaľ žiadne pokusy o dešifrovanie.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <a class="button is-light is-fullwidth mt-2" href="/data">
+                        <span class="icon"><i class="material-icons">table_chart</i></span>
+                        <span>Zobraziť údaje</span>
+                    </a>
+                    <a class="button is-light is-fullwidth mt-2" href="/history">
+                        <span class="icon"><i class="material-icons">history</i></span>
+                        <span>História</span>
+                    </a>
+                    <a class="button is-light is-fullwidth mt-2" href="/settings">
+                        <span class="icon"><i class="material-icons">settings</i></span>
+                        <span>Nastavenia</span>
+                    </a>
+                    <a class="button is-light is-fullwidth mt-2" href="/logout">
+                        <span class="icon"><i class="material-icons">logout</i></span>
+                        <span>Odhlásiť sa</span>
+                    </a>
+                </div>
+                <div class="column is-9">
+                    <h1 class="title">Dešifrovanie textu</h1>
+                    <div class="box">
+                        <form id="decrypt-form">
+                            <div class="field">
+                                <label class="label">Zašifrovaný text</label>
+                                <div class="control">
+                                    <textarea class="textarea" name="ciphertext" placeholder="Vložte zašifrovaný text" required></textarea>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-info is-fullwidth" type="button" onclick="decrypt()">Dešifrovať</button>
+                                </div>
+                            </div>
+                        </form>
+                        <div id="result" class="mt-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+            <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+            <p>© 2025 Projekt Cypher</p>
+        </div>
+    </footer>
+
+    <script>
+        function decrypt() {
+            const form = document.getElementById('decrypt-form');
+            const formData = new FormData(form);
+            fetch('/decrypt', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ciphertext: formData.get('ciphertext')
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                const resultDiv = document.getElementById('result');
+                if (data.error) {
+                    resultDiv.innerHTML = `<p class="has-text-danger">${data.error}</p>`;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p><strong>Zašifrovaný text:</strong> ${data.ciphertext}</p>
+                        <p><strong>Dešifrovaný text:</strong> ${data.decrypted_text}</p>
+                    `;
+                    loadTimeline(); // Обновляем временную шкалу после успешной дешифровки
+                }
+            });
+        }
+
+        let attemptsData = [];
+
+        function loadTimeline() {
+            fetch('/attempts')
+            .then(response => response.json())
+            .then(data => {
+                attemptsData = data;
+                const timelineContent = document.getElementById('timeline-content');
+
+                // Если попыток нет, оставляем сообщение по умолчанию
+                if (attemptsData.length === 0) {
+                    return;
+                }
+
+                // Очищаем содержимое и добавляем реальные данные
+                timelineContent.innerHTML = '';
+
+                // Группировка попыток по датам
+                const groupedByDate = {};
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(today.getDate() - 1);
+
+                attemptsData.forEach(attempt => {
+                    const attemptDate = new Date(attempt.start_time);
+                    let dateLabel;
+
+                    if (attemptDate.toDateString() === today.toDateString()) {
+                        dateLabel = 'DNES';
+                    } else if (attemptDate.toDateString() === yesterday.toDateString()) {
+                        dateLabel = 'VČERA';
+                    } else {
+                        dateLabel = attemptDate.toLocaleDateString('sk-SK', { month: 'long', year: 'numeric' }).toUpperCase();
+                    }
+
+                    if (!groupedByDate[dateLabel]) {
+                        groupedByDate[dateLabel] = [];
+                    }
+                    groupedByDate[dateLabel].push(attempt);
+                });
+
+                // Отображаем сгруппированные данные
+                for (const [dateLabel, attempts] of Object.entries(groupedByDate)) {
+                    const timelineItem = document.createElement('div');
+                    timelineItem.className = 'timeline-item';
+                    let attemptsList = '';
+                    attempts.forEach(attempt => {
+                        attemptsList += `
+                            <p>Zašifrovaný: ${attempt.encrypted_text || 'N/A'}</p>
+                            <p>Dešifrovaný: ${attempt.decrypted_text || 'N/A'}</p>
+                            <p>Úspech: ${attempt.success ? 'Áno' : 'Nie'}</p>
+                        `;
+                    });
+                    timelineItem.innerHTML = `
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <p class="heading">${dateLabel}</p>
+                            ${attemptsList}
+                        </div>
+                    `;
+                    timelineContent.appendChild(timelineItem);
+                }
+            });
+        }
+
+        function filterTimeline() {
+            const input = document.querySelector('.timeline-header .input').value.toLowerCase();
+            const timelineItems = document.querySelectorAll('.timeline-item');
+            timelineItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(input) ? '' : 'none';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', loadTimeline);
+    </script>
+</body>
+</html>

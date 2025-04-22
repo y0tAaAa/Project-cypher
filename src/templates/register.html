@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vytvoriť si účet</title>
+    <link rel="icon" type="image/x-icon" href="https://via.placeholder.com/16x16.png?text=F">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <section class="section">
+        <div class="container">
+            <div class="columns is-centered">
+                <div class="column is-4">
+                    <div class="has-text-centered">
+                        <img src="../static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+                        <img src="../static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+                    </div>
+                    <h1 class="title has-text-centered">Vytvoriť si účet</h1>
+                    <form id="register-form">
+                        <div class="field">
+                            <label class="label">Meno</label>
+                            <div class="control">
+                                <input class="input" type="text" name="username" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Email</label>
+                            <div class="control">
+                                <input class="input" type="email" name="email" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Heslo</label>
+                            <div class="control">
+                                <input class="input" type="password" name="password" required>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <div class="control">
+                                <button class="button is-info is-fullwidth" type="button" onclick="register()">Prihlásiť sa</button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <div class="control">
+                                <button class="button is-light is-fullwidth" type="button">
+                                    <span class="icon"><i class="material-icons">google</i></span>
+                                    <span>Zaregistrovať sa cez Google</span>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="content has-text-centered">
+            <img src="../static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
+            <img src="../static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
+            <p>© 2025 Projekt Cypher</p>
+        </div>
+    </footer>
+
+    <script>
+        function register() {
+            const form = document.getElementById('register-form');
+            const formData = new FormData(form);
+            fetch('/register', {
+                method: 'POST',
+                body: JSON.stringify({
+                    username: formData.get('username'),
+                    email: formData.get('email'),
+                    password: formData.get('password')
+                }),
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    alert('Registrácia úspešná!');
+                    window.location.href = '/login';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

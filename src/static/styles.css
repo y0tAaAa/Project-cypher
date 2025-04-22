@@ -1,0 +1,62 @@
+body {
+    background-color: #f5f5f5;
+}
+
+.section {
+    padding: 2rem 1.5rem;
+}
+
+.menu {
+    background-color: #e8ecef;
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.menu-label {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.menu-list a {
+    color: #4a4a4a;
+}
+
+.menu-list a:hover {
+    background-color: #f5f5f5;
+    color: #3273dc;
+}
+
+.input {
+    border-radius: 4px;
+}
+
+.button.is-info {
+    background-color: #3273dc;
+    border-color: transparent;
+    color: #fff;
+}
+
+.button.is-light {
+    background-color: #fff;
+    border-color: #dbdbdb;
+    color: #363636;
+}
+
+.table-container {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.table th {
+    cursor: pointer;
+}
+
+.table th:hover {
+    background-color: #f0f0f0;
+}
+
+.footer {
+    background-color: #fafafa;
+    padding: 1rem;
+}
