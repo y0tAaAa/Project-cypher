@@ -1,11 +1,17 @@
 import sys
 import os
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, session
 import psycopg2
 from datetime import datetime
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
+import requests  # Added for manual user info fetching
+
+# Загружаем переменные окружения из .env
+load_dotenv()
 
 # Устанавливаем кодировку UTF-8
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -25,6 +31,19 @@ app.secret_key = 'your_secret_key_here'
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# Настройка OAuth для Google
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.getenv('GOOGLE_CLIENT_ID'),
+    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+    access_token_url='https://accounts.google.com/o/oauth2/token',
+    authorize_url='https://accounts.google.com/o/oauth2/auth',
+    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
+    userinfo_endpoint='https://www.googleapis.com/oauth2/v3/userinfo',
+    client_kwargs={'scope': 'openid email profile'},
+)
 
 class User(UserMixin):
     def __init__(self, user_id, username, email):
@@ -84,14 +103,14 @@ decryptor = Decryptor(model_path=model_path, cipher_type="Caesar")
 
 # Подключение к базе данных
 def get_db_connection():
-    return psycopg2.connect(
-        "dbname=llm user=postgres password=Vlad222 host=localhost port=5432"
-    )
+    database_url = os.getenv('DATABASE_URL', 'dbname=llm user=postgres password=Vlad222 host=localhost port=5432')
+    return psycopg2.connect(database_url)
 
 # Главная страница
 @app.route('/')
 @login_required
 def index():
+    print("Accessing main page (/)")
     return render_template('index.html')
 
 # Страница входа
@@ -115,11 +134,65 @@ def login():
         if user and check_password_hash(user[3], password):
             user_obj = User(user[0], user[1], user[2])
             login_user(user_obj)
-            return jsonify({"message": "Login successful"})
+            # Перенаправляем на главную страницу, игнорируя параметр next
+            return jsonify({"message": "Login successful", "redirect": url_for('index')})
         else:
             return jsonify({"error": "Invalid email or password"}), 401
 
     return render_template('login.html')
+
+# Маршрут для авторизации через Google
+@app.route('/google/login')
+def google_login():
+    redirect_uri = url_for('google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+# Callback для Google OAuth
+@app.route('/google/callback')
+def google_callback():
+    try:
+        token = google.authorize_access_token()
+        print("Token:", token)
+
+        # Manually fetch user info using the access token
+        userinfo_endpoint = 'https://www.googleapis.com/oauth2/v3/userinfo'
+        headers = {'Authorization': f"Bearer {token['access_token']}"}
+        response = requests.get(userinfo_endpoint, headers=headers)
+        response.raise_for_status()  # Raise an error for bad responses
+        user_info = response.json()
+        print("User Info:", user_info)
+
+        email = user_info['email']
+        username = user_info.get('name', email.split('@')[0])
+
+        # Проверяем, есть ли пользователь в базе данных
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, username, email FROM Users WHERE email = %s", (email,))
+        user = cursor.fetchone()
+
+        if user:
+            # Пользователь уже существует, логиним его
+            user_obj = User(user[0], user[1], user[2])
+        else:
+            # Создаем нового пользователя (без пароля, так как используется Google)
+            cursor.execute(
+                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING user_id",
+                (username, email, '')
+            )
+            user_id = cursor.fetchone()[0]
+            conn.commit()
+            user_obj = User(user_id, username, email)
+
+        cursor.close()
+        conn.close()
+
+        login_user(user_obj)
+        # Перенаправляем на главную страницу, игнорируя параметр next
+        return redirect(url_for('index'))
+    except Exception as e:
+        print(f"Error in Google callback: {str(e)}")
+        return str(e), 500
 
 # Страница регистрации
 @app.route('/register', methods=['GET', 'POST'])

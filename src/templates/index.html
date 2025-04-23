@@ -155,9 +155,11 @@
                     let attemptsList = '';
                     attempts.forEach(attempt => {
                         attemptsList += `
-                            <p>Zašifrovaný: ${attempt.encrypted_text || 'N/A'}</p>
-                            <p>Dešifrovaný: ${attempt.decrypted_text || 'N/A'}</p>
-                            <p>Úspech: ${attempt.success ? 'Áno' : 'Nie'}</p>
+                            <div class="attempt-item">
+                                <p>Zašifrovaný: ${attempt.encrypted_text || 'N/A'}</p>
+                                <p>Dešifrovaný: ${attempt.decrypted_text || 'N/A'}</p>
+                                <p>Úspech: ${attempt.success ? 'Áno' : 'Nie'}</p>
+                            </div>
                         `;
                     });
                     timelineItem.innerHTML = `
@@ -175,9 +177,36 @@
         function filterTimeline() {
             const input = document.querySelector('.timeline-header .input').value.toLowerCase();
             const timelineItems = document.querySelectorAll('.timeline-item');
+
             timelineItems.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                item.style.display = text.includes(input) ? '' : 'none';
+                const heading = item.querySelector('.heading').textContent.toLowerCase();
+                const attemptItems = item.querySelectorAll('.attempt-item');
+                let hasMatch = heading.includes(input); // Проверяем совпадение в заголовке
+
+                // Проверяем совпадения в каждой попытке внутри группы
+                attemptItems.forEach(attempt => {
+                    const text = attempt.textContent.toLowerCase();
+                    if (text.includes(input)) {
+                        hasMatch = true;
+                        attempt.style.display = ''; // Показываем совпадающую попытку
+                    } else {
+                        attempt.style.display = 'none'; // Скрываем несовпадающую попытку
+                    }
+                });
+
+                // Показываем группу, если есть хотя бы одно совпадение
+                item.style.display = hasMatch ? '' : 'none';
+
+                // Если группа видима, но ни одна попытка не соответствует, показываем сообщение
+                if (hasMatch && !Array.from(attemptItems).some(attempt => attempt.style.display === '')) {
+                    const noMatchMessage = document.createElement('p');
+                    noMatchMessage.className = 'has-text-grey';
+                    noMatchMessage.textContent = 'Žiadne zhody v tejto skupine.';
+                    item.querySelector('.timeline-content').appendChild(noMatchMessage);
+                } else {
+                    const existingMessage = item.querySelector('.has-text-grey');
+                    if (existingMessage) existingMessage.remove();
+                }
             });
         }
 
