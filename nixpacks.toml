@@ -1,0 +1,2 @@
+[phases.setup]
+nixPkgs = ["postgresql"]  # Install PostgreSQL development libraries
