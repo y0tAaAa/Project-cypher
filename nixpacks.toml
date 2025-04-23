@@ -1,2 +1,2 @@
 [phases.setup]
-nixPkgs = ["postgresql"]  # Install PostgreSQL development libraries
+nixPkgs = ["python310"]  # Install Python 3.10
