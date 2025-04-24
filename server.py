@@ -97,7 +97,7 @@ class Decryptor:
 # Инициализация дешифратора
 model_path = "fine_tuned_model"
 print(f"Loading model from: {model_path}")
-decryptor = Decryptor(model_path=model_path, cipher_type="Caesar")
+decryptor = Decryptor(model_path="y0ta/fine_tuned_model", cipher_type="Caesar")
 
 # Подключение к базе данных
 def get_db_connection():

@@ -4,3 +4,6 @@ __pycache__/
 .env
 *.db
 *.sqlite3
+echo "fine_tuned_model/" | Add-Content -Path .gitignore
+echo "fine_tuned_model_new/" | Add-Content -Path .gitignore
+echo "*.py" | Add-Content -Path .gitignore
