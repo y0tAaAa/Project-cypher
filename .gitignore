@@ -4,6 +4,9 @@ __pycache__/
 .env
 *.db
 *.sqlite3
-echo "fine_tuned_model/" | Add-Content -Path .gitignore
-echo "fine_tuned_model_new/" | Add-Content -Path .gitignore
-echo "*.py" | Add-Content -Path .gitignore
+echo "fine_tuned_model/" >> .gitignore
+echo "fine_tuned_model_new/" >> .gitignore
+echo "results/" >> .gitignore
+echo "data/" >> .gitignore
+git add .gitignore
+git commit -m "Update .gitignore to ignore large directories"
