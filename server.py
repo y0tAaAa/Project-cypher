@@ -8,6 +8,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
+from psycopg2 import IntegrityError
 import requests  # Added for manual user info fetching
 
 # Загружаем переменные окружения из .env
@@ -101,13 +102,24 @@ decryptor = Decryptor(model_path="y0ta/fine_tuned_model", cipher_type="Caesar")
 
 # Подключение к базе данных
 def get_db_connection():
-    # Берём только из env, больше не падаем на localhost
-    database_url = os.environ['DATABASE_URL']
-    # psycopg2 ожидает схему postgresql://
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    # Для Railway обычно нужен sslmode=require
-    return psycopg2.connect(database_url, sslmode='require')
+    # 1) Если есть единый URL (Railway, Heroku и т.п.) — используем его
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        # psycopg2 ожидает схему postgresql://, а не postgres://
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        # часто требует sslmode
+        return psycopg2.connect(database_url, sslmode='require')
+
+    # 2) Иначе — собираем из отдельных переменных (локальный fallback)
+    params = {
+        'dbname':   os.getenv('DB_NAME',     'llm'),
+        'user':     os.getenv('DB_USER',     'postgres'),
+        'password': os.getenv('DB_PASSWORD', 'Vlad222'),
+        'host':     os.getenv('DB_HOST',     'localhost'),
+        'port':     os.getenv('DB_PORT',     '5432'),
+    }
+    return psycopg2.connect(**params)
 
 # Главная страница
 @app.route('/')
@@ -201,32 +213,41 @@ def google_callback():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-
-        if not username or not email or not password:
-            return jsonify({"error": "All fields are required"}), 400
-
-        password_hash = generate_password_hash(password)
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
+        conn = None
+        cur  = None
         try:
-            cursor.execute(
-                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING user_id",
-                (username, email, password_hash)
+            data = request.get_json(force=True)
+            username = data.get('username')
+            email    = data.get('email')
+            password = data.get('password')
+            if not (username and email and password):
+                return jsonify({"error": "Všetky polia sú povinné"}), 400
+
+            conn   = get_db_connection()
+            cur    = conn.cursor()
+            pw_hash = generate_password_hash(password)
+
+            cur.execute(
+                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s)",
+                (username, email, pw_hash)
             )
-            user_id = cursor.fetchone()[0]
             conn.commit()
-            return jsonify({"message": "Registration successful"})
-        except psycopg2.IntegrityError as e:
-            conn.rollback()
-            return jsonify({"error": "Username or email already exists"}), 400
+
+            return jsonify({"message": "Registrácia úspešná"})
+
+        except IntegrityError as e:
+            # Можно опционально проверить e.pgcode == '23505' для дубликатов
+            return jsonify({"error": "Užívateľ alebo email už existuje"}), 400
+
+        except Exception as e:
+            app.logger.error("Register error", exc_info=True)
+            return jsonify({"error": str(e)}), 500
+
         finally:
-            cursor.close()
-            conn.close()
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
 
     return render_template('register.html')
 
