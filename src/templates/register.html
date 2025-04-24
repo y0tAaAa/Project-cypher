@@ -40,7 +40,9 @@
                         </div>
                         <div class="field">
                             <div class="control">
-                                <button class="button is-info is-fullwidth" type="button" onclick="register()">Prihlásiť sa</button>
+                                <button class="button is-info is-fullwidth" type="button" onclick="register()">
+                                    Registrovať sa
+                                  </button>
                             </div>
                         </div>
                         <div class="field">
@@ -67,27 +69,32 @@
 
     <script>
         function register() {
-            const form = document.getElementById('register-form');
-            const formData = new FormData(form);
-            fetch('/register', {
-                method: 'POST',
-                body: JSON.stringify({
-                    username: formData.get('username'),
-                    email: formData.get('email'),
-                    password: formData.get('password')
-                }),
-                headers: { 'Content-Type': 'application/json' }
+          const form = document.getElementById('register-form');
+          const formData = new FormData(form);
+          fetch('/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: formData.get('username'),
+              email:    formData.get('email'),
+              password: formData.get('password')
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    alert('Registrácia úspešná!');
-                    window.location.href = '/login';
-                }
-            });
+          })
+          .then(response => {
+            if (!response.ok) {
+              return response.text().then(txt => { throw new Error(txt) });
+            }
+            return response.json();
+          })
+          .then(data => {
+            alert('Registrácia úspešná!');
+            window.location.href = '/login';
+          })
+          .catch(err => {
+            alert('Chyba: ' + err.message);
+            console.error('Register error:', err);
+          });
         }
-    </script>
+      </script>
 </body>
 </html>

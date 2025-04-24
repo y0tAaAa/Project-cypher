@@ -101,8 +101,13 @@ decryptor = Decryptor(model_path="y0ta/fine_tuned_model", cipher_type="Caesar")
 
 # Подключение к базе данных
 def get_db_connection():
-    database_url = os.getenv('DATABASE_URL', 'dbname=llm user=postgres password=Vlad222 host=localhost port=5432')
-    return psycopg2.connect(database_url)
+    # Берём только из env, больше не падаем на localhost
+    database_url = os.environ['DATABASE_URL']
+    # psycopg2 ожидает схему postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    # Для Railway обычно нужен sslmode=require
+    return psycopg2.connect(database_url, sslmode='require')
 
 # Главная страница
 @app.route('/')
