@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["python310"]  # Install Python 3.10
+nixPkgs = ["python310"]
+
+[phases.build]
+cmds = ["ls -la /app", "ls -la /app/src"]
