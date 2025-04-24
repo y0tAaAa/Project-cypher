@@ -11,29 +11,28 @@ import psycopg2
 import requests
 from datetime import datetime
 
-# Load environment variables from .env (for local development)
+# Загрузка .env (локальная разработка)
 load_dotenv()
 
-# Ensure UTF-8 output
+# UTF-8
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-# Paths for templates and static files
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+# Пути
+SRC_DIR      = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(SRC_DIR, 'src', 'templates')
-STATIC_DIR   = os.path.join(SRC_DIR, 'src', 'static')
+STATIC_DIR    = os.path.join(SRC_DIR, 'src', 'static')
 
-# Initialize Flask
+# Flask
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret')
 
-# Flask-Login setup
-login_manager = LoginManager()
-login_manager.init_app(app)
+# Flask-Login
+login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# OAuth (Google) setup
+# OAuth (Google)
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
@@ -46,7 +45,7 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'},
 )
 
-# User class for Flask-Login
+# User class
 class User(UserMixin):
     def __init__(self, user_id, username, email):
         self.id = user_id
@@ -56,16 +55,14 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur  = conn.cursor()
     cur.execute("SELECT user_id, username, email FROM Users WHERE user_id = %s", (user_id,))
     row = cur.fetchone()
     cur.close()
     conn.close()
-    if row:
-        return User(*row)
-    return None
+    return User(*row) if row else None
 
-# Database connection factory with dual fallback
+# Подключение к БД
 def get_db_connection():
     database_url = os.getenv('DATABASE_URL')
     if database_url:
@@ -80,7 +77,7 @@ def get_db_connection():
         port     = os.getenv('DB_PORT', '5432'),
     )
 
-# Initialize schema on first request
+# Инициализация схемы
 def init_db():
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -149,11 +146,10 @@ def init_db():
     cur.close()
     conn.close()
 
-@app.before_first_request
-def ensure_tables_exist():
-    init_db()
+# Вызываем сразу при импорте модуля (Gunicorn его загружает)
+init_db()
 
-# Decryptor: local model or remote HF API
+# Decryptor (локальный или HF API)
 USE_REMOTE = os.getenv('USE_REMOTE_MODEL', 'false').lower() in ('1','true')
 HF_TOKEN  = os.getenv('HF_API_TOKEN')
 
@@ -171,26 +167,20 @@ class Decryptor:
     def decrypt(self, ciphertext):
         if USE_REMOTE:
             headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-            payload = {
-                "inputs": f"Ciphertext: {ciphertext}\nPlaintext:",
-                "options": {"wait_for_model": True}
-            }
+            payload = {"inputs": f"Ciphertext: {ciphertext}\nPlaintext:", "options": {"wait_for_model": True}}
             resp = requests.post(
                 "https://api-inference.huggingface.co/models/y0ta/fine_tuned_model",
                 headers=headers, json=payload, timeout=30
             )
             resp.raise_for_status()
-            generated = resp.json()[0]["generated_text"]
-            return generated.split("Plaintext:")[-1].strip()
+            gen = resp.json()[0]["generated_text"]
+            return gen.split("Plaintext:")[-1].strip()
 
         inputs = self.tokenizer(
             f"Ciphertext: {ciphertext}\nPlaintext:",
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=256
+            return_tensors="pt", padding=True, truncation=True, max_length=256
         )
-        outputs = self.model.generate(
+        out = self.model.generate(
             inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_new_tokens=50,
@@ -200,25 +190,23 @@ class Decryptor:
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id
         )
-        decoded = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return decoded.split("Plaintext:")[-1].strip()
+        text = self.tokenizer.decode(out[0], skip_special_tokens=True)
+        return text.split("Plaintext:")[-1].strip()
 
-# Instantiate decryptor
 decryptor = Decryptor(model_path="y0ta/fine_tuned_model", cipher_type="Caesar")
 
-# Routes
+# Роуты
 
 @app.route('/')
 @login_required
 def index():
     return render_template('index.html')
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         data = request.get_json(force=True)
-        email = data.get('email')
-        password = data.get('password')
+        email, password = data.get('email'), data.get('password')
         if not (email and password):
             return jsonify({"error": "Email and password are required"}), 400
 
@@ -239,8 +227,7 @@ def login():
 
 @app.route('/google/login')
 def google_login():
-    redirect_uri = url_for('google_callback', _external=True)
-    return google.authorize_redirect(redirect_uri)
+    return google.authorize_redirect(url_for('google_callback', _external=True))
 
 @app.route('/google/callback')
 def google_callback():
@@ -249,10 +236,9 @@ def google_callback():
         headers = {'Authorization': f"Bearer {token['access_token']}"}
         resp = requests.get('https://www.googleapis.com/oauth2/v3/userinfo', headers=headers)
         resp.raise_for_status()
-        user_info = resp.json()
-
-        email = user_info['email']
-        username = user_info.get('name', email.split('@')[0])
+        info = resp.json()
+        email = info['email']
+        username = info.get('name', email.split('@')[0])
 
         conn = get_db_connection(); cur = conn.cursor()
         cur.execute("SELECT user_id, username, email FROM Users WHERE email = %s", (email,))
@@ -261,7 +247,7 @@ def google_callback():
             user_obj = User(*row)
         else:
             cur.execute(
-                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s) RETURNING user_id",
+                "INSERT INTO Users (username, email, password_hash) VALUES (%s,%s,%s) RETURNING user_id",
                 (username, email, '')
             )
             user_id = cur.fetchone()[0]
@@ -275,7 +261,7 @@ def google_callback():
         app.logger.error("Google callback error", exc_info=True)
         return str(e), 500
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET','POST'])
 def register():
     if request.method == 'POST':
         conn = None; cur = None
@@ -290,7 +276,7 @@ def register():
             conn = get_db_connection(); cur = conn.cursor()
             pw_hash = generate_password_hash(password)
             cur.execute(
-                "INSERT INTO Users (username, email, password_hash) VALUES (%s, %s, %s)",
+                "INSERT INTO Users (username, email, password_hash) VALUES (%s,%s,%s)",
                 (username, email, pw_hash)
             )
             conn.commit()
@@ -303,7 +289,6 @@ def register():
         finally:
             if cur: cur.close()
             if conn: conn.close()
-
     return render_template('register.html')
 
 @app.route('/logout')
@@ -312,41 +297,25 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-@app.route('/data')
-@login_required
-def data():
-    return render_template('data.html')
-
-@app.route('/history')
-@login_required
-def history():
-    return render_template('history.html')
-
-@app.route('/settings')
-@login_required
-def settings():
-    return render_template('settings.html')
-
 @app.route('/attempts')
 @login_required
 def get_attempts():
-    sort_by    = request.args.get('sort', 'start_time')
-    order      = request.args.get('order', 'asc')
-    cipher_type= request.args.get('cipher_type')
+    sort_by     = request.args.get('sort','start_time')
+    order       = request.args.get('order','asc')
+    cipher_type = request.args.get('cipher_type')
 
     query = """
-        SELECT da.attempt_id, c.name AS cipher_name, m.name AS model_name,
-               da.start_time, da.success, c.encrypted_text, dr.model_output
+        SELECT da.attempt_id, c.name, m.name, da.start_time, da.success,
+               c.encrypted_text, dr.model_output
         FROM Decryption_Attempts da
-        JOIN Cipher c ON da.cipher_id = c.cipher_id
-        JOIN Model m ON da.model_id = m.model_id
-        LEFT JOIN Decryption_Result dr ON c.cipher_id = dr.cipher_id
-        WHERE da.user_id = %s
+        JOIN Cipher c ON da.cipher_id=c.cipher_id
+        JOIN Model m ON da.model_id=m.model_id
+        LEFT JOIN Decryption_Result dr ON c.cipher_id=dr.cipher_id
+        WHERE da.user_id=%s
     """
     params = [current_user.id]
     if cipher_type:
-        query += " AND c.cipher_type = %s"
-        params.append(cipher_type)
+        query += " AND c.cipher_type=%s"; params.append(cipher_type)
     query += f" ORDER BY {sort_by} {'ASC' if order=='asc' else 'DESC'}"
 
     conn = get_db_connection(); cur = conn.cursor()
@@ -356,15 +325,10 @@ def get_attempts():
 
     return jsonify([
         {
-            "attempt_id":    r[0],
-            "cipher_name":   r[1],
-            "model_name":    r[2],
-            "start_time":    r[3].isoformat(),
-            "success":       r[4],
-            "encrypted_text":r[5],
-            "decrypted_text":r[6]
-        }
-        for r in rows
+            "attempt_id": r[0], "cipher_name": r[1], "model_name": r[2],
+            "start_time": r[3].isoformat(), "success": r[4],
+            "encrypted_text": r[5], "decrypted_text": r[6]
+        } for r in rows
     ])
 
 @app.route('/decrypt', methods=['POST'])
@@ -373,53 +337,55 @@ def decrypt_text():
     data = request.get_json(force=True)
     ciphertext = data.get('ciphertext')
     if not ciphertext:
-        return jsonify({"error": "No ciphertext provided"}), 400
+        return jsonify({"error":"No ciphertext provided"}),400
 
-    start_time = datetime.now()
-    decrypted  = decryptor.decrypt(ciphertext)
-    end_time   = datetime.now()
+    start = datetime.now()
+    decrypted = decryptor.decrypt(ciphertext)
+    end = datetime.now()
 
     conn = get_db_connection(); cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO Cipher (name, historical_period, origin, encryption_principles, encrypted_text, discovery_date)
+            INSERT INTO Cipher (name,historical_period,origin,encryption_principles,
+                                encrypted_text,discovery_date)
             VALUES (%s,%s,%s,%s,%s,%s) RETURNING cipher_id
-        """, ("Caesar Cipher","Ancient","Rome","Shift by 3",ciphertext,datetime.now().date()))
-        cipher_id = cur.fetchone()[0]
+        """, ("Caesar Cipher","Ancient","Rome","Shift by 3",ciphertext,start.date()))
+        cid = cur.fetchone()[0]
 
-        cur.execute("SELECT model_id FROM Model WHERE name=%s AND version=%s", ("GPT-2","1.0"))
+        cur.execute("SELECT model_id FROM Model WHERE name=%s AND version=%s",
+                    ("GPT-2","1.0"))
         mrow = cur.fetchone()
         if mrow:
-            model_id = mrow[0]
+            mid = mrow[0]
         else:
             cur.execute("""
                 INSERT INTO Model (name,specialization,version,usage_date)
                 VALUES (%s,%s,%s,%s) RETURNING model_id
-            """, ("GPT-2","Decryption","1.0",datetime.now().date()))
-            model_id = cur.fetchone()[0]
+            """, ("GPT-2","Decryption","1.0",start.date()))
+            mid = cur.fetchone()[0]
 
         cur.execute("""
-            INSERT INTO Decryption_Attempts (cipher_id,model_id,user_id,start_time,end_time,success,percent_correct)
+            INSERT INTO Decryption_Attempts (cipher_id,model_id,user_id,
+                start_time,end_time,success,percent_correct)
             VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING attempt_id
-        """, (cipher_id,model_id,current_user.id,start_time,end_time,True,0.0))
-        attempt_id = cur.fetchone()[0]
+        """, (cid,mid,current_user.id,start,end,True,0.0))
+        aid = cur.fetchone()[0]
 
         cur.execute("""
             INSERT INTO Decryption_Result (cipher_id,model_output,similarity,readability)
             VALUES (%s,%s,%s,%s)
-        """, (cipher_id,decrypted,0.0,0.0))
+        """, (cid,decrypted,0.0,0.0))
 
         conn.commit()
     except Exception as e:
         conn.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error":str(e)}),500
     finally:
-        cur.close()
-        conn.close()
+        cur.close(); conn.close()
 
-    return jsonify({"ciphertext": ciphertext, "decrypted_text": decrypted})
+    return jsonify({"ciphertext":ciphertext,"decrypted_text":decrypted})
 
-# Local development entrypoint
+# Локальный запуск
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
