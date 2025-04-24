@@ -19,11 +19,9 @@ sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
 # Получаем абсолютные пути к папкам templates и static
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))  # Папка src/ (PROJECT-CYPHER/src/)
-TEMPLATES_DIR = os.path.join(SRC_DIR, 'templates')  # PROJECT-CYPHER/src/templates/
-STATIC_DIR = os.path.join(SRC_DIR, 'static')  # PROJECT-CYPHER/src/static/
-
-# Инициализация Flask с правильными путями
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))  # Now the root directory (PROJECT-CYPHER/)
+TEMPLATES_DIR = os.path.join(SRC_DIR, 'src', 'templates')  # PROJECT-CYPHER/src/templates/
+STATIC_DIR = os.path.join(SRC_DIR, 'src', 'static')  # PROJECT-CYPHER/src/static/
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = 'your_secret_key_here'
 

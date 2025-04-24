@@ -13,7 +13,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-ENV FLASK_APP=src/server.py
+ENV FLASK_APP=server.py
 ENV FLASK_ENV=production
 
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "src.server:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "server:app"]
