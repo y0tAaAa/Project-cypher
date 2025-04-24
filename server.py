@@ -1,6 +1,6 @@
 import sys
 import os
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,28 +11,28 @@ import psycopg2
 import requests
 from datetime import datetime
 
-# Загрузка .env (локальная разработка)
+# Load environment variables
 load_dotenv()
 
-# UTF-8
+# Ensure UTF-8 output
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding='utf-8')
 sys.stderr.reconfigure(encoding='utf-8')
 
-# Пути
-SRC_DIR      = os.path.dirname(os.path.abspath(__file__))
+# Paths for templates and static files
+SRC_DIR       = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(SRC_DIR, 'src', 'templates')
 STATIC_DIR    = os.path.join(SRC_DIR, 'src', 'static')
 
-# Flask
+# Initialize Flask
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret')
 
-# Flask-Login
+# Flask-Login setup
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# OAuth (Google)
+# OAuth (Google) setup
 oauth = OAuth(app)
 google = oauth.register(
     name='google',
@@ -45,7 +45,7 @@ google = oauth.register(
     client_kwargs={'scope': 'openid email profile'},
 )
 
-# User class
+# User model for Flask-Login
 class User(UserMixin):
     def __init__(self, user_id, username, email):
         self.id = user_id
@@ -58,11 +58,10 @@ def load_user(user_id):
     cur  = conn.cursor()
     cur.execute("SELECT user_id, username, email FROM Users WHERE user_id = %s", (user_id,))
     row = cur.fetchone()
-    cur.close()
-    conn.close()
+    cur.close(); conn.close()
     return User(*row) if row else None
 
-# Подключение к БД
+# Database connection with fallback
 def get_db_connection():
     database_url = os.getenv('DATABASE_URL')
     if database_url:
@@ -70,14 +69,14 @@ def get_db_connection():
             database_url = database_url.replace("postgres://", "postgresql://", 1)
         return psycopg2.connect(database_url, sslmode='require')
     return psycopg2.connect(
-        dbname   = os.getenv('DB_NAME', 'llm'),
-        user     = os.getenv('DB_USER', 'postgres'),
+        dbname   = os.getenv('DB_NAME',     'llm'),
+        user     = os.getenv('DB_USER',     'postgres'),
         password = os.getenv('DB_PASSWORD', 'Vlad222'),
-        host     = os.getenv('DB_HOST', 'localhost'),
-        port     = os.getenv('DB_PORT', '5432'),
+        host     = os.getenv('DB_HOST',     'localhost'),
+        port     = os.getenv('DB_PORT',     '5432'),
     )
 
-# Инициализация схемы
+# Create tables if they don't exist
 def init_db():
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -90,7 +89,6 @@ def init_db():
         password_hash VARCHAR(256) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
-
     cur.execute("""
     CREATE TABLE IF NOT EXISTS Cipher (
         cipher_id SERIAL PRIMARY KEY,
@@ -102,7 +100,6 @@ def init_db():
         encrypted_text TEXT,
         discovery_date DATE
     )""")
-
     cur.execute("""
     CREATE TABLE IF NOT EXISTS Model (
         model_id SERIAL PRIMARY KEY,
@@ -111,7 +108,6 @@ def init_db():
         version VARCHAR(20),
         usage_date DATE
     )""")
-
     cur.execute("""
     CREATE TABLE IF NOT EXISTS Decryption_Attempts (
         attempt_id SERIAL PRIMARY KEY,
@@ -123,7 +119,6 @@ def init_db():
         success BOOLEAN,
         percent_correct DECIMAL(5,2)
     )""")
-
     cur.execute("""
     CREATE TABLE IF NOT EXISTS Decryption_Result (
         result_id SERIAL PRIMARY KEY,
@@ -132,7 +127,6 @@ def init_db():
         similarity DECIMAL(5,2),
         readability DECIMAL(5,2)
     )""")
-
     cur.execute("""
     CREATE TABLE IF NOT EXISTS Manual_Correction (
         correction_id SERIAL PRIMARY KEY,
@@ -146,43 +140,34 @@ def init_db():
     cur.close()
     conn.close()
 
-# Вызываем сразу при импорте модуля (Gunicorn его загружает)
+# Run schema initialization immediately (Gunicorn will import this module)
 init_db()
 
-# Decryptor (локальный или HF API)
-USE_REMOTE = os.getenv('USE_REMOTE_MODEL', 'false').lower() in ('1','true')
-HF_TOKEN  = os.getenv('HF_API_TOKEN')
-
+# Decryptor with 8-bit quantization
 class Decryptor:
-    def __init__(self, model_path=None, cipher_type=None):
-        if USE_REMOTE:
-            if not HF_TOKEN:
-                raise RuntimeError("HF_API_TOKEN is required when USE_REMOTE_MODEL=true")
-            return
-        self.model = AutoModelForCausalLM.from_pretrained(model_path)
+    def __init__(self, model_path="y0ta/fine_tuned_model", cipher_type="Caesar"):
+        bnb = BitsAndBytesConfig(load_in_8bit=True)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            quantization_config=bnb,
+            device_map="auto"
+        )
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.cipher_type = cipher_type
 
-    def decrypt(self, ciphertext):
-        if USE_REMOTE:
-            headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-            payload = {"inputs": f"Ciphertext: {ciphertext}\nPlaintext:", "options": {"wait_for_model": True}}
-            resp = requests.post(
-                "https://api-inference.huggingface.co/models/y0ta/fine_tuned_model",
-                headers=headers, json=payload, timeout=30
-            )
-            resp.raise_for_status()
-            gen = resp.json()[0]["generated_text"]
-            return gen.split("Plaintext:")[-1].strip()
-
+    def decrypt(self, ciphertext: str) -> str:
+        prompt = f"Ciphertext: {ciphertext}\nPlaintext:"
         inputs = self.tokenizer(
-            f"Ciphertext: {ciphertext}\nPlaintext:",
-            return_tensors="pt", padding=True, truncation=True, max_length=256
+            prompt,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=256
         )
-        out = self.model.generate(
-            inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
+        outputs = self.model.generate(
+            inputs.input_ids,
+            attention_mask=inputs.attention_mask,
             max_new_tokens=50,
             num_beams=5,
             no_repeat_ngram_size=2,
@@ -190,12 +175,12 @@ class Decryptor:
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id
         )
-        text = self.tokenizer.decode(out[0], skip_special_tokens=True)
-        return text.split("Plaintext:")[-1].strip()
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True).split("Plaintext:")[-1].strip()
 
-decryptor = Decryptor(model_path="y0ta/fine_tuned_model", cipher_type="Caesar")
+# Instantiate decryptor
+decryptor = Decryptor()
 
-# Роуты
+# Routes
 
 @app.route('/')
 @login_required
@@ -206,7 +191,7 @@ def index():
 def login():
     if request.method == 'POST':
         data = request.get_json(force=True)
-        email, password = data.get('email'), data.get('password')
+        email = data.get('email'); password = data.get('password')
         if not (email and password):
             return jsonify({"error": "Email and password are required"}), 400
 
@@ -289,6 +274,7 @@ def register():
         finally:
             if cur: cur.close()
             if conn: conn.close()
+
     return render_template('register.html')
 
 @app.route('/logout')
@@ -296,6 +282,21 @@ def register():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/data')
+@login_required
+def data():
+    return render_template('data.html')
+
+@app.route('/history')
+@login_required
+def history():
+    return render_template('history.html')
+
+@app.route('/settings')
+@login_required
+def settings():
+    return render_template('settings.html')
 
 @app.route('/attempts')
 @login_required
@@ -339,9 +340,9 @@ def decrypt_text():
     if not ciphertext:
         return jsonify({"error":"No ciphertext provided"}),400
 
-    start = datetime.now()
+    start     = datetime.now()
     decrypted = decryptor.decrypt(ciphertext)
-    end = datetime.now()
+    end       = datetime.now()
 
     conn = get_db_connection(); cur = conn.cursor()
     try:
@@ -367,9 +368,8 @@ def decrypt_text():
         cur.execute("""
             INSERT INTO Decryption_Attempts (cipher_id,model_id,user_id,
                 start_time,end_time,success,percent_correct)
-            VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING attempt_id
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
         """, (cid,mid,current_user.id,start,end,True,0.0))
-        aid = cur.fetchone()[0]
 
         cur.execute("""
             INSERT INTO Decryption_Result (cipher_id,model_output,similarity,readability)
@@ -385,7 +385,7 @@ def decrypt_text():
 
     return jsonify({"ciphertext":ciphertext,"decrypted_text":decrypted})
 
-# Локальный запуск
+# Local development entrypoint
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
