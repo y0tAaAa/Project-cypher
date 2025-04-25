@@ -141,6 +141,9 @@ class Decryptor:
 decryptor = Decryptor()
 
 # ─── 9) Маршруты ───────────────────────────────────────────────────
+# ... (previous imports and code remain unchanged)
+
+# ─── 9) Маршруты ───────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -227,6 +230,39 @@ def decrypt_text():
     dec = decryptor.decrypt(ct)
     return jsonify({"ciphertext": ct, "decrypted_text": dec})
 
+@app.route('/attempts')
+@login_required
+def attempts():
+    # Fetch decryption attempts from the database
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT da.attempt_id, c.name AS cipher_name, m.name AS model_name, 
+               da.start_time, da.end_time, da.success, da.correctness_percentage
+        FROM Decryption_Attempts da
+        JOIN Ciphers c ON da.cipher_id = c.cipher_id
+        JOIN Models m ON da.model_id = m.model_id
+        ORDER BY da.start_time DESC
+    """)
+    attempts = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    # Convert the query result into a list of dictionaries for easier template rendering
+    attempts_list = [
+        {
+            "attempt_id": row[0],
+            "cipher_name": row[1],
+            "model_name": row[2],
+            "start_time": row[3],
+            "end_time": row[4],
+            "success": row[5],
+            "correctness_percentage": row[6]
+        } for row in attempts
+    ]
+    
+    return render_template('attempts.html', attempts=attempts_list)
+
 # ─── 10) Запуск ────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.1", port=int(os.getenv("PORT", 5000)), debug=True)

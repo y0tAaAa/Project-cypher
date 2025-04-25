@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Decryption Attempts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <img src="{{ url_for('static', filename='/static/kemt_logo.png') }}" alt="KEMT Logo">
+        <img src="{{ url_for('static', filename='/static/fei_logo.png') }}" alt="FEI Logo">
+        <h1>Decryption Attempts</h1>
+    </header>
+    <nav>
+        <a href="{{ url_for('index') }}">Home</a> |
+        <a href="{{ url_for('data') }}">Data</a> |
+        <a href="{{ url_for('history') }}">History</a> |
+        <a href="{{ url_for('settings') }}">Settings</a> |
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </nav>
+    <main>
+        {% if attempts %}
+            <table border="1">
+                <thead>
+                    <tr>
+                        <th>Attempt ID</th>
+                        <th>Cipher Name</th>
+                        <th>Model Name</th>
+                        <th>Start Time</th>
+                        <th>End Time</th>
+                        <th>Success</th>
+                        <th>Correctness (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attempt in attempts %}
+                        <tr>
+                            <td>{{ attempt.attempt_id }}</td>
+                            <td>{{ attempt.cipher_name }}</td>
+                            <td>{{ attempt.model_name }}</td>
+                            <td>{{ attempt.start_time }}</td>
+                            <td>{{ attempt.end_time }}</td>
+                            <td>{{ attempt.success }}</td>
+                            <td>{{ attempt.correctness_percentage }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No decryption attempts found.</p>
+        {% endif %}
+    </main>
+</body>
+</html>
