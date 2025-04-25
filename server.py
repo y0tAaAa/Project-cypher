@@ -183,6 +183,22 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
+
+@app.route('/data')
+@login_required
+def data():
+    return render_template('data.html')
+
+@app.route('/history')
+@login_required
+def history():
+    return render_template('history.html')
+
+@app.route('/settings')
+@login_required
+def settings():
+    return render_template('settings.html')
+
 @app.route("/decrypt", methods=["POST"])
 @login_required
 def decrypt_text():
