@@ -29,11 +29,15 @@ STATIC_DIR    = os.path.join(SRC_DIR, "src", "static")
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = os.getenv("SECRET_KEY", "change-me")
 
-# ─── 4) Проверка HF_SPACE_URL ──────────────────────────────────────
+# ─── 4) Проверка и нормализация HF_SPACE_URL ───────────────────────
 HF_SPACE_URL = os.getenv("HF_SPACE_URL")
 if not HF_SPACE_URL:
     raise RuntimeError("HF_SPACE_URL must be set")
-app.logger.info(f"HF_SPACE_URL = {HF_SPACE_URL!r}")
+
+# Переводим возможный /api/predict → /run/predict и убираем лишние слэши
+HF_SPACE_URL = HF_SPACE_URL.rstrip("/") \
+               .replace("/api/predict", "/run/predict")
+app.logger.info(f"Using HF_SPACE_URL = {HF_SPACE_URL!r}")
 
 # ─── 5) Flask-Login ────────────────────────────────────────────────
 login_manager = LoginManager(app)
@@ -154,9 +158,13 @@ init_db()
 # ─── 9) Decryptor через HF Space ──────────────────────────────────
 class Decryptor:
     def decrypt(self, ciphertext: str) -> str:
+        payload = {
+            "data": [ciphertext],
+            "fn_index": 0
+        }
         resp = requests.post(
             HF_SPACE_URL,
-            json={"data": [ciphertext]},
+            json=payload,
             timeout=30
         )
         resp.raise_for_status()
