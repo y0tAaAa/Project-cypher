@@ -1,130 +1,71 @@
 <!DOCTYPE html>
 <html lang="sk">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>História</title>
-    <link rel="icon" type="image/x-icon" href="https://via.placeholder.com/16x16.png?text=F">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
-    <link rel="stylesheet" href="/static/styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Nastavenia – Projekt Cypher</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <section class="section">
-        <div class="container">
-            <div class="has-text-centered">
-                <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
-                <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
-            </div>
-            <div class="level">
-                <div class="level-left">
-                    <h1 class="title">História dešifrovania</h1>
-                </div>
-                <div class="level-right">
-                    <a class="button is-light mr-2" href="/">
-                        <span class="icon"><i class="material-icons">home</i></span>
-                        <span>Späť na hlavnú stránku</span>
-                    </a>
-                    <a class="button is-light" href="/logout">
-                        <span class="icon"><i class="material-icons">logout</i></span>
-                        <span>Odhlásiť sa</span>
-                    </a>
-                </div>
-            </div>
-            <div class="field">
-                <p class="control has-icons-right">
-                    <input class="input" type="text" placeholder="Hľadať..." onkeyup="filterTable()">
-                    <span class="icon is-small is-right">
-                        <i class="material-icons">search</i>
-                    </span>
-                </p>
-            </div>
-            <div class="table-container">
-                <table class="table is-bordered is-striped is-narrow is-hoverable is-fullwidth">
-                    <thead>
-                        <tr>
-                            <th onclick="sortTable(0)">ID Pokusu <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(1)">Šifra <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(2)">Model <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(3)">Čas začiatku <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(4)">Úspech <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(5)">Zašifrovaný text <span class="icon"><i class="material-icons">sort</i></span></th>
-                            <th onclick="sortTable(6)">Dešifrovaný text <span class="icon"><i class="material-icons">sort</i></span></th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-table">
-                        <!-- Данные будут добавлены через JavaScript -->
-                    </tbody>
-                </table>
-            </div>
+  <section class="section">
+    <div class="container">
+      <!-- шапка -->
+      <div class="has-text-centered mb-5">
+        <img src="/static/kemt_logo.png" style="height:40px;margin-right:10px;">
+        <img src="/static/fei_logo.png" style="height:40px;">
+      </div>
+      <div class="level">
+        <h1 class="title level-left">Nastavenia</h1>
+        <div class="level-right">
+          <a class="button is-light mr-2" href="/">
+            <span class="icon"><i class="material-icons">home</i></span>
+            <span>Späť na hlavnú stránku</span>
+          </a>
+          <a class="button is-light" href="/logout">
+            <span class="icon"><i class="material-icons">logout</i></span>
+            <span>Odhlásiť sa</span>
+          </a>
         </div>
-    </section>
+      </div>
 
-    <footer class="footer">
-        <div class="content has-text-centered">
-            <img src="/static/kemt_logo.png" alt="KEMT Logo" style="height: 40px; margin-right: 10px;">
-            <img src="/static/fei_logo.png" alt="FEI Logo" style="height: 40px;">
-            <p>© 2025 Projekt Cypher</p>
-        </div>
-    </footer>
+      <!-- собственно форма настроек -->
+      <div class="box">
+        <h2 class="subtitle">Profil</h2>
+        <form id="settings-form">
+          <div class="field">
+            <label class="label">Zmeniť heslo</label>
+            <div class="control">
+              <input class="input" type="password" name="new_password" placeholder="Nové heslo">
+            </div>
+          </div>
+          <div class="field">
+            <div class="control">
+              <button class="button is-info" type="button" onclick="updatePassword()">
+                Uložiť zmeny
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
 
-    <script>
-        let historyData = [];
+  <footer class="footer">
+    <div class="content has-text-centered">
+      <img src="/static/kemt_logo.png" style="height:40px;margin-right:10px;">
+      <img src="/static/fei_logo.png" style="height:40px;">
+      <p>© 2025 Projekt Cypher</p>
+    </div>
+  </footer>
 
-        function loadHistoryTable() {
-            fetch('/attempts')
-            .then(response => response.json())
-            .then(data => {
-                historyData = data;
-                const tbody = document.getElementById('history-table');
-                tbody.innerHTML = '';
-                historyData.forEach(attempt => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${attempt.attempt_id}</td>
-                        <td>${attempt.cipher_name}</td>
-                        <td>${attempt.model_name}</td>
-                        <td>${new Date(attempt.start_time).toLocaleString()}</td>
-                        <td>${attempt.success ? 'Áno' : 'Nie'}</td>
-                        <td>${attempt.encrypted_text || 'N/A'}</td>
-                        <td>${attempt.decrypted_text || 'N/A'}</td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            });
-        }
-
-        function sortTable(columnIndex) {
-            const tbody = document.getElementById('history-table');
-            const rows = Array.from(tbody.getElementsByTagName('tr'));
-            const isAscending = tbody.dataset.sortOrder !== 'asc';
-            rows.sort((a, b) => {
-                let aValue = a.cells[columnIndex].textContent;
-                let bValue = b.cells[columnIndex].textContent;
-                if (columnIndex === 4) {
-                    aValue = aValue === 'Áno' ? 1 : 0;
-                    bValue = bValue === 'Áno' ? 1 : 0;
-                } else if (columnIndex === 3) {
-                    aValue = new Date(aValue);
-                    bValue = new Date(bValue);
-                }
-                return isAscending ? (aValue > bValue ? 1 : -1) : (aValue < bValue ? 1 : -1);
-            });
-            tbody.innerHTML = '';
-            rows.forEach(row => tbody.appendChild(row));
-            tbody.dataset.sortOrder = isAscending ? 'asc' : 'desc';
-        }
-
-        function filterTable() {
-            const input = document.querySelector('.input').value.toLowerCase();
-            const rows = document.querySelectorAll('#history-table tr');
-            rows.forEach(row => {
-                const text = row.textContent.toLowerCase();
-                row.style.display = text.includes(input) ? '' : 'none';
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', loadHistoryTable);
-    </script>
+  <script>
+    function updatePassword() {
+      const form = document.getElementById('settings-form');
+      const pwd = form.new_password.value;
+      // тут ваш AJAX-запрос на endpoint, который обновит пароль
+      alert('Функционал смены пароля пока не реализован.');
+    }
+  </script>
 </body>
 </html>
