@@ -2,7 +2,6 @@ import os
 import sys
 import psycopg2
 import requests
-import logging
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 from flask_login import (
     LoginManager, UserMixin,
@@ -15,22 +14,28 @@ from dotenv import load_dotenv
 from datetime import datetime
 from psycopg2 import IntegrityError
 
-# ─── Загрузка переменных из .env и UTF-8 ────────────────────────────
+# ─── 1) Загрузка .env и установка UTF-8 ─────────────────────────────
 load_dotenv()
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-# ─── Пути к шаблонам и статикам ────────────────────────────────────
+# ─── 2) Пути к шаблонам и статикам ─────────────────────────────────
 SRC_DIR       = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(SRC_DIR, "src", "templates")
 STATIC_DIR    = os.path.join(SRC_DIR, "src", "static")
 
-# ─── Flask + секретный ключ ────────────────────────────────────────
+# ─── 3) Инициализация Flask ────────────────────────────────────────
 app = Flask(__name__, template_folder=TEMPLATES_DIR, static_folder=STATIC_DIR)
 app.secret_key = os.getenv("SECRET_KEY", "change-me")
 
-# ─── Flask-Login ──────────────────────────────────────────────────
+# ─── 4) Проверка HF_SPACE_URL ──────────────────────────────────────
+HF_SPACE_URL = os.getenv("HF_SPACE_URL")
+if not HF_SPACE_URL:
+    raise RuntimeError("HF_SPACE_URL must be set")
+app.logger.info(f"HF_SPACE_URL = {HF_SPACE_URL!r}")
+
+# ─── 5) Flask-Login ────────────────────────────────────────────────
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
 
@@ -49,10 +54,11 @@ def load_user(user_id):
         (user_id,)
     )
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
     return User(*row) if row else None
 
-# ─── OAuth (Google) ───────────────────────────────────────────────
+# ─── 6) OAuth (Google) ────────────────────────────────────────────
 oauth = OAuth(app)
 google = oauth.register(
     name="google",
@@ -65,7 +71,7 @@ google = oauth.register(
     client_kwargs={"scope": "openid email profile"},
 )
 
-# ─── Подключение к базе PostgreSQL ────────────────────────────────
+# ─── 7) Подключение к PostgreSQL ──────────────────────────────────
 def get_db_connection():
     url = os.getenv("DATABASE_URL")
     if url:
@@ -80,7 +86,7 @@ def get_db_connection():
         port     = os.getenv("DB_PORT",     "5432"),
     )
 
-# ─── Создание схемы при старте ────────────────────────────────────
+# ─── 8) Инициализация схемы ────────────────────────────────────────
 def init_db():
     conn = get_db_connection()
     cur  = conn.cursor()
@@ -139,16 +145,13 @@ def init_db():
       final_text TEXT
     )""")
     conn.commit()
-    cur.close(); conn.close()
+    cur.close()
+    conn.close()
 
-# создаём таблицы один раз при импорте
+# выполняем один раз при импорте
 init_db()
 
-# ─── Decryptor через ваш HF Space ───────────────────────────────────
-HF_SPACE_URL = os.getenv("HF_SPACE_URL")
-if not HF_SPACE_URL:
-    raise RuntimeError("HF_SPACE_URL must be set")
-app.logger.info(f"HF_SPACE_URL = {HF_SPACE_URL!r}")
+# ─── 9) Decryptor через HF Space ──────────────────────────────────
 class Decryptor:
     def decrypt(self, ciphertext: str) -> str:
         resp = requests.post(
@@ -161,7 +164,15 @@ class Decryptor:
 
 decryptor = Decryptor()
 
-# ─── Маршруты ───────────────────────────────────────────────────────
+# ─── 10) Health-check ─────────────────────────────────────────────
+@app.route("/health")
+def health():
+    return jsonify({
+        "ok": True,
+        "hf_space_url": HF_SPACE_URL
+    })
+
+# ─── 11) Маршруты приложения ───────────────────────────────────────
 @app.route("/")
 @login_required
 def index():
@@ -174,23 +185,25 @@ def login():
         email    = data.get("email")
         password = data.get("password")
         if not (email and password):
-            return jsonify({"error":"Email and password are required"}),400
+            return jsonify({"error": "Email and password are required"}), 400
 
-        conn = get_db_connection(); cur = conn.cursor()
+        conn = get_db_connection()
+        cur  = conn.cursor()
         cur.execute(
             "SELECT user_id, username, email, password_hash FROM Users WHERE email = %s",
             (email,)
         )
         user = cur.fetchone()
-        cur.close(); conn.close()
+        cur.close()
+        conn.close()
 
         if user and check_password_hash(user[3], password):
             login_user(User(user[0], user[1], user[2]))
             return jsonify({
-                "message":"Login successful",
-                "redirect":url_for("index")
+                "message":  "Login successful",
+                "redirect": url_for("index")
             })
-        return jsonify({"error":"Invalid email or password"}),401
+        return jsonify({"error": "Invalid email or password"}), 401
 
     return render_template("login.html")
 
@@ -204,21 +217,22 @@ def register():
             email    = data.get("email")
             password = data.get("password")
             if not (username and email and password):
-                return jsonify({"error":"All fields required"}),400
+                return jsonify({"error": "All fields required"}), 400
 
-            conn = get_db_connection(); cur = conn.cursor()
+            conn    = get_db_connection()
+            cur     = conn.cursor()
             pw_hash = generate_password_hash(password)
             cur.execute(
                 "INSERT INTO Users (username,email,password_hash) VALUES (%s,%s,%s)",
                 (username, email, pw_hash)
             )
             conn.commit()
-            return jsonify({"message":"Registration successful"})
+            return jsonify({"message": "Registration successful"})
         except IntegrityError:
-            return jsonify({"error":"User or email already exists"}),400
+            return jsonify({"error": "User or email already exists"}), 400
         except Exception as e:
             app.logger.error("Register error", exc_info=True)
-            return jsonify({"error":str(e)}),500
+            return jsonify({"error": str(e)}), 500
         finally:
             if cur: cur.close()
             if conn: conn.close()
@@ -237,15 +251,15 @@ def decrypt_text():
     data       = request.get_json(force=True)
     ciphertext = data.get("ciphertext")
     if not ciphertext:
-        return jsonify({"error":"No ciphertext provided"}),400
+        return jsonify({"error": "No ciphertext provided"}), 400
 
     decrypted = decryptor.decrypt(ciphertext)
     return jsonify({
-        "ciphertext": ciphertext,
+        "ciphertext":      ciphertext,
         "decrypted_text": decrypted
     })
 
-# ─── Запуск локально ───────────────────────────────────────────────────
+# ─── 12) Запуск локально ───────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
