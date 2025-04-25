@@ -19,7 +19,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 # ─── 2) Инициализация Flask ────────────────────────────────────────
-app = Flask(__name__)
+app = Flask(__name__, template_folder="src/templates", static_folder="src/static")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
 app.config["JSON_AS_ASCII"] = False
 
