@@ -2,6 +2,7 @@ import os
 import sys
 import psycopg2
 import requests
+import logging
 from flask import Flask, request, jsonify, render_template, redirect, url_for
 from flask_login import (
     LoginManager, UserMixin,
@@ -147,7 +148,7 @@ init_db()
 HF_SPACE_URL = os.getenv("HF_SPACE_URL")
 if not HF_SPACE_URL:
     raise RuntimeError("HF_SPACE_URL must be set")
-
+app.logger.info(f"HF_SPACE_URL = {HF_SPACE_URL!r}")
 class Decryptor:
     def decrypt(self, ciphertext: str) -> str:
         resp = requests.post(
