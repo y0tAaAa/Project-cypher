@@ -69,31 +69,46 @@
     </footer>
 
     <script>
+        // Массив для хранения данных попыток
         let dataTable = [];
 
+        // Функция загрузки данных о попытках дешифровки
         function loadDataTable() {
+            // Отправляем AJAX-запрос на маршрут /attempts для получения данных
             fetch('/attempts')
-            .then(response => response.json())
-            .then(data => {
-                dataTable = data;
-                const tbody = document.getElementById('data-table');
-                tbody.innerHTML = '';
-                dataTable.forEach(attempt => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${attempt.attempt_id}</td>
-                        <td>${attempt.cipher_name}</td>
-                        <td>${attempt.model_name}</td>
-                        <td>${new Date(attempt.start_time).toLocaleString()}</td>
-                        <td>${attempt.success ? 'Áno' : 'Nie'}</td>
-                        <td>${attempt.encrypted_text || 'N/A'}</td>
-                        <td>${attempt.decrypted_text || 'N/A'}</td>
-                    `;
-                    tbody.appendChild(row);
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    dataTable = data;
+                    const tbody = document.getElementById('data-table');
+                    tbody.innerHTML = '';
+                    // Заполняем таблицу полученными данными
+                    dataTable.forEach(attempt => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${attempt.attempt_id}</td>
+                            <td>${attempt.cipher_name}</td>
+                            <td>${attempt.model_name}</td>
+                            <td>${new Date(attempt.start_time).toLocaleString()}</td>
+                            <td>${attempt.success ? 'Áno' : 'Nie'}</td>
+                            <td>${attempt.encrypted_text || 'N/A'}</td>
+                            <td>${attempt.decrypted_text || 'N/A'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    // Если произошла ошибка, выводим уведомление
+                    alert('Nepodarilo sa načítať údaje.');
+                    console.error('Error loading data:', error);
                 });
-            });
         }
 
+        // Функция сортировки таблицы по указанému столбцу
         function sortTable(columnIndex) {
             const tbody = document.getElementById('data-table');
             const rows = Array.from(tbody.getElementsByTagName('tr'));
@@ -115,6 +130,7 @@
             tbody.dataset.sortOrder = isAscending ? 'asc' : 'desc';
         }
 
+        // Функция фильтрации таблицы по введенному тексту
         function filterTable() {
             const input = document.querySelector('.input').value.toLowerCase();
             const rows = document.querySelectorAll('#data-table tr');
@@ -124,6 +140,7 @@
             });
         }
 
+        // Загружаем данные при загрузке страницы
         document.addEventListener('DOMContentLoaded', loadDataTable);
     </script>
 </body>

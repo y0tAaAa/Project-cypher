@@ -55,6 +55,26 @@
                     <div class="box">
                         <form id="decrypt-form">
                             <div class="field">
+                                <label class="label">Vyberte šifru</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select id="cipherSelect" name="cipher_id" required>
+                                            <option value="">Vyberte šifru</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Vyberte model</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select id="modelSelect" name="model_id" required>
+                                            <option value="">Vyberte model</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="field">
                                 <label class="label">Zašifrovaný text</label>
                                 <div class="control">
                                     <textarea class="textarea" name="ciphertext" placeholder="Vložte zašifrovaný text" required></textarea>
@@ -82,17 +102,96 @@
     </footer>
 
     <script>
+        // Fetch ciphers and populate dropdown
+        fetch('/api/ciphers')
+            .then(response => {
+                console.log('Ciphers response status:', response.status);
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                return response.json();
+            })
+            .then(ciphers => {
+                console.log('Ciphers data:', ciphers);
+                const select = document.getElementById('cipherSelect');
+                if (ciphers.length === 0) {
+                    console.warn('No ciphers found in the database.');
+                    alert('No ciphers available. Please contact the administrator.');
+                }
+                ciphers.forEach(cipher => {
+                    const option = document.createElement('option');
+                    option.value = cipher.cipher_id;
+                    option.text = cipher.name;
+                    select.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading ciphers:', error);
+                alert('Failed to load ciphers. Please try again.');
+            });
+
+        // Fetch models and populate dropdown
+        fetch('/api/models')
+            .then(response => {
+                console.log('Models response status:', response.status);
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                return response.json();
+            })
+            .then(models => {
+                console.log('Models data:', models);
+                const select = document.getElementById('modelSelect');
+                if (models.length === 0) {
+                    console.warn('No models found in the database.');
+                    alert('No models available. Please contact the administrator.');
+                }
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.model_id;
+                    option.text = model.name;
+                    select.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading models:', error);
+                alert('Failed to load models. Please try again.');
+            });
+
         function decrypt() {
             const form = document.getElementById('decrypt-form');
             const formData = new FormData(form);
+            const ciphertext = formData.get('ciphertext');
+            const cipherId = formData.get('cipher_id');
+            const modelId = formData.get('model_id');
+
+            if (!ciphertext || !cipherId || !modelId) {
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = `<p class="has-text-danger">Prosím, vyplňte všetky polia.</p>`;
+                return;
+            }
+
             fetch('/decrypt', {
                 method: 'POST',
                 body: JSON.stringify({
-                    ciphertext: formData.get('ciphertext')
+                    ciphertext: ciphertext,
+                    cipher_id: parseInt(cipherId),
+                    model_id: parseInt(modelId)
                 }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
             })
-            .then(response => response.json())
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                return response.json();
+            })
             .then(data => {
                 const resultDiv = document.getElementById('result');
                 if (data.error) {
@@ -104,20 +203,43 @@
                     `;
                     loadTimeline(); // Обновляем временную шкалу после успешной дешифровки
                 }
+            })
+            .catch(error => {
+                console.error('Error during decryption:', error);
+                const resultDiv = document.getElementById('result');
+                resultDiv.innerHTML = `<p class="has-text-danger">Chyba pri dešifrovaní: ${error.message}</p>`;
             });
         }
 
         let attemptsData = [];
 
         function loadTimeline() {
-            fetch('/attempts')
-            .then(response => response.json())
+            fetch('/attempts', {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (response.status === 401) {
+                    window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+                    return;
+                }
+                return response.json();
+            })
             .then(data => {
                 attemptsData = data;
                 const timelineContent = document.getElementById('timeline-content');
 
                 // Если попыток нет, оставляем сообщение по умолчанию
                 if (attemptsData.length === 0) {
+                    timelineContent.innerHTML = `
+                        <div class="timeline-item">
+                            <div class="timeline-marker"></div>
+                            <div class="timeline-content">
+                                <p>Zatiaľ žiadne pokusy o dešifrovanie.</p>
+                            </div>
+                        </div>
+                    `;
                     return;
                 }
 
@@ -171,6 +293,18 @@
                     `;
                     timelineContent.appendChild(timelineItem);
                 }
+            })
+            .catch(error => {
+                console.error('Error loading timeline:', error);
+                const timelineContent = document.getElementById('timeline-content');
+                timelineContent.innerHTML = `
+                    <div class="timeline-item">
+                        <div class="timeline-marker"></div>
+                        <div class="timeline-content">
+                            <p class="has-text-danger">Chyba pri načítavaní časovej osi.</p>
+                        </div>
+                    </div>
+                `;
             });
         }
 
@@ -179,7 +313,7 @@
             const timelineItems = document.querySelectorAll('.timeline-item');
 
             timelineItems.forEach(item => {
-                const heading = item.querySelector('.heading').textContent.toLowerCase();
+                const heading = item.querySelector('.heading') ? item.querySelector('.heading').textContent.toLowerCase() : '';
                 const attemptItems = item.querySelectorAll('.attempt-item');
                 let hasMatch = heading.includes(input); // Проверяем совпадение в заголовке
 
@@ -212,5 +346,5 @@
 
         document.addEventListener('DOMContentLoaded', loadTimeline);
     </script>
-</body>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'93600435b99b4551',t:'MTc0NTYwNjkyNS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>

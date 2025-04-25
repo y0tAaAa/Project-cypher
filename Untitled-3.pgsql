@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS Decryption_Attempts (
     end_time TIMESTAMP,
     success BOOLEAN,
     correctness_percentage DECIMAL(5,2) CHECK (correctness_percentage BETWEEN 0 AND 100),
+    encrypted_text TEXT,
+    decrypted_text TEXT,
     FOREIGN KEY (cipher_id) REFERENCES Ciphers(cipher_id),
     FOREIGN KEY (model_id) REFERENCES Models(model_id)
 );

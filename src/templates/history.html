@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>História</title>
+    <title>História dešifrovania</title>
     <link rel="icon" type="image/x-icon" href="https://via.placeholder.com/16x16.png?text=F">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
@@ -69,31 +69,46 @@
     </footer>
 
     <script>
+        // Массив для хранения данных попыток
         let historyData = [];
 
+        // Функция загрузки данных о попытках дешифровки
         function loadHistoryTable() {
+            // Отправляем AJAX-запрос на маршрут /attempts для получения данных
             fetch('/attempts')
-            .then(response => response.json())
-            .then(data => {
-                historyData = data;
-                const tbody = document.getElementById('history-table');
-                tbody.innerHTML = '';
-                historyData.forEach(attempt => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${attempt.attempt_id}</td>
-                        <td>${attempt.cipher_name}</td>
-                        <td>${attempt.model_name}</td>
-                        <td>${new Date(attempt.start_time).toLocaleString()}</td>
-                        <td>${attempt.success ? 'Áno' : 'Nie'}</td>
-                        <td>${attempt.encrypted_text || 'N/A'}</td>
-                        <td>${attempt.decrypted_text || 'N/A'}</td>
-                    `;
-                    tbody.appendChild(row);
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    historyData = data;
+                    const tbody = document.getElementById('history-table');
+                    tbody.innerHTML = '';
+                    // Заполняем таблицу полученными данными
+                    historyData.forEach(attempt => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${attempt.attempt_id}</td>
+                            <td>${attempt.cipher_name}</td>
+                            <td>${attempt.model_name}</td>
+                            <td>${new Date(attempt.start_time).toLocaleString()}</td>
+                            <td>${attempt.success ? 'Áno' : 'Nie'}</td>
+                            <td>${attempt.encrypted_text || 'N/A'}</td>
+                            <td>${attempt.decrypted_text || 'N/A'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                })
+                .catch(error => {
+                    // Если произошла ошибка, выводим уведомление
+                    alert('Nepodarilo sa načítať údaje.');
+                    console.error('Error loading data:', error);
                 });
-            });
         }
 
+        // Функция сортировки таблицы по указанému столбцу
         function sortTable(columnIndex) {
             const tbody = document.getElementById('history-table');
             const rows = Array.from(tbody.getElementsByTagName('tr'));
@@ -115,6 +130,7 @@
             tbody.dataset.sortOrder = isAscending ? 'asc' : 'desc';
         }
 
+        // Функция фильтрации таблицы по введенному тексту
         function filterTable() {
             const input = document.querySelector('.input').value.toLowerCase();
             const rows = document.querySelectorAll('#history-table tr');
@@ -124,6 +140,7 @@
             });
         }
 
+        // Загружаем данные при загрузке страницы
         document.addEventListener('DOMContentLoaded', loadHistoryTable);
     </script>
 </body>
