@@ -389,38 +389,64 @@ def settings():
 @app.route("/decrypt", methods=["POST"])
 @login_required
 def decrypt_text():
-    data = request.get_json(force=True)
-    ct = data.get("ciphertext")
-    cipher_id = data.get("cipher_id")
-    model_id = data.get("model_id")
-    if not ct:
-        return jsonify({"error": "Нет текста"}), 400
-    if not cipher_id or not model_id:
-        return jsonify({"error": "Не указаны cipher_id или model_id"}), 400
-
-    # Проверка существования пользователя
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT user_id FROM "Users" WHERE user_id = %s', (current_user.id,))
-    user_exists = cur.fetchone()
-    if not user_exists:
-        cur.close()
-        conn.close()
-        logout_user()
-        return jsonify({"error": "Пользователь не найден. Пожалуйста, войдите снова."}), 401
-
-    # Получение эталонного текста из таблицы Ciphers
-    cur.execute('SELECT plaintext FROM "Ciphers" WHERE cipher_id = %s', (cipher_id,))
-    cipher_data = cur.fetchone()
-    if not cipher_data:
-        cur.close()
-        conn.close()
-        return jsonify({"error": "Шифр не найден"}), 404
-    reference_text = cipher_data[0]  # Эталонный текст
-
-    start_time = datetime.now()
     try:
-        dec = decryptor.decrypt(ct)
+        # Получение данных из запроса
+        data = request.get_json(force=True)
+        ct = data.get("ciphertext")
+        cipher_id = data.get("cipher_id")
+        model_id = data.get("model_id")
+
+        # Валидация входных данных
+        if not ct:
+            return jsonify({"error": "Zašifrovaný text je povinný"}), 400
+        if not cipher_id or not model_id:
+            return jsonify({"error": "Nie je uvedené cipher_id alebo model_id"}), 400
+        try:
+            cipher_id = int(cipher_id)
+            model_id = int(model_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "cipher_id a model_id musia byť celé čísla"}), 400
+
+        # Подключение к базе данных
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Проверка существования пользователя
+        cur.execute('SELECT user_id FROM "Users" WHERE user_id = %s', (current_user.id,))
+        user_exists = cur.fetchone()
+        if not user_exists:
+            cur.close()
+            conn.close()
+            logout_user()
+            return jsonify({"error": "Používateľ nebol nájdený. Prosím, prihláste sa znova."}), 401
+
+        # Проверка существования шифра
+        cur.execute('SELECT plaintext FROM "Ciphers" WHERE cipher_id = %s', (cipher_id,))
+        cipher_data = cur.fetchone()
+        if not cipher_data:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Šifra nebola nájdená"}), 404
+        reference_text = cipher_data[0]  # Эталонный текст
+
+        # Проверка существования модели
+        cur.execute('SELECT model_id FROM "Models" WHERE model_id = %s', (model_id,))
+        model_exists = cur.fetchone()
+        if not model_exists:
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Model nebol nájdený"}), 404
+
+        # Дешифровка
+        start_time = datetime.now()
+        try:
+            dec = decryptor.decrypt(ct)
+        except Exception as e:
+            logging.error(f"Decryption failed for ciphertext '{ct}': {str(e)}")
+            cur.close()
+            conn.close()
+            return jsonify({"error": f"Chyba pri dešifrovaní: {str(e)}"}), 500
+
         end_time = datetime.now()
         success = bool(re.search(r'\b\w+\b', dec))
         correctness_percentage = 100.0 if success else 0.0
@@ -435,17 +461,16 @@ def decrypt_text():
         attempt_id = cur.fetchone()[0]
 
         # Расчёт similarity_measure и readability_level
-        # similarity_measure: Используем SequenceMatcher для сравнения с эталонным текстом
         if reference_text:
             seq_matcher = difflib.SequenceMatcher(None, dec.lower(), reference_text.lower())
-            similarity_measure = seq_matcher.ratio() * 100
+            similarity_measure = round(seq_matcher.ratio() * 100, 2)
         else:
-            similarity_measure = min(100.0, (len(dec) / len(ct)) * 100 if len(ct) > 0 else 0.0)
+            similarity_measure = round(min(100.0, (len(dec) / len(ct)) * 100 if len(ct) > 0 else 0.0), 2)
 
         # readability_level: Процент слов, которые выглядят "читаемыми"
         words = dec.split()
         readable_words = sum(1 for word in words if word.isalpha())
-        readability_level = (readable_words / len(words) * 100) if words else 0.0
+        readability_level = round((readable_words / len(words) * 100) if words else 0.0, 2)
 
         # Вставка в Decryption_Results
         cur.execute("""
@@ -456,16 +481,32 @@ def decrypt_text():
         """, (attempt_id, dec, similarity_measure, readability_level))
         result_id = cur.fetchone()[0]
 
+        # Коммит транзакции
         conn.commit()
         logging.info(f"Decryption attempt logged: attempt_id={attempt_id}, cipher_id={cipher_id}, model_id={model_id}, success={success}")
         logging.info(f"Decryption result logged: attempt_id={attempt_id}, result_id={result_id}, similarity_measure={similarity_measure}, readability_level={readability_level}")
-        return jsonify({"ciphertext": ct, "decrypted_text": dec, "reference_text": reference_text, "similarity_measure": similarity_measure})
+
+        # Возвращаем результат
+        return jsonify({
+            "ciphertext": ct,
+            "decrypted_text": dec,
+            "reference_text": reference_text,
+            "similarity_measure": similarity_measure,
+            "readability_level": readability_level,
+            "attempt_id": attempt_id,
+            "result_id": result_id
+        })
+
     except Exception as e:
-        logging.error(f"Decryption failed: {e}")
-        return jsonify({"error": "Ошибка при дешифровке: " + str(e)}), 500
+        logging.error(f"Unexpected error in /decrypt: {str(e)}")
+        return jsonify({"error": f"Chyba na serveri: {str(e)}"}), 500
+
     finally:
-        cur.close()
-        conn.close()
+        # Гарантированное закрытие соединения
+        if 'cur' in locals():
+            cur.close()
+        if 'conn' in locals():
+            conn.close()
 
 @app.route("/correct", methods=["POST"])
 @login_required
