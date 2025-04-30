@@ -10,9 +10,10 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime
 from psycopg2 import IntegrityError
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 import torch
 import difflib
+import psutil
 
 # ─── 1) .env + UTF-8 ───────────────────────────────────────────────
 load_dotenv()
@@ -258,10 +259,17 @@ class Decryptor:
     @staticmethod
     def load_model():
         if Decryptor.model is None:
+            logging.info(f"Memory usage before model load: {psutil.virtual_memory().percent}%")
             Decryptor.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-            Decryptor.model = AutoModelForCausalLM.from_pretrained(MODEL_ID)
+            quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+            Decryptor.model = AutoModelForCausalLM.from_pretrained(
+                MODEL_ID,
+                quantization_config=quantization_config,
+                device_map="auto"
+            )
             Decryptor.model.eval()
             logging.info(f"Model loaded: {MODEL_ID}")
+            logging.info(f"Memory usage after model load: {psutil.virtual_memory().percent}%")
 
     @staticmethod
     def decrypt(ciphertext: str) -> str:
@@ -278,8 +286,8 @@ class Decryptor:
             outputs = Decryptor.model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
-                max_new_tokens=50,
-                num_beams=5,
+                max_new_tokens=20,
+                num_beams=2,
                 no_repeat_ngram_size=2,
                 early_stopping=True
             )
