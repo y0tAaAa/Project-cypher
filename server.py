@@ -259,15 +259,11 @@ class Decryptor:
     @staticmethod
     def load_model():
         if Decryptor.model is None:
-            logging.info(f"Memory usage before model load: {psutil.virtual_memory().percent}%")
-            Decryptor.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-            Decryptor.model = AutoModelForCausalLM.from_pretrained(
-                MODEL_ID,
-                device_map="cpu"
-            )
+            Decryptor.tokenizer = AutoTokenizer.from_pretrained("distilgpt2")  # Загрузка токенизатора
+            Decryptor.tokenizer.pad_token = Decryptor.tokenizer.eos_token    # Установка pad_token
+            Decryptor.model = AutoModelForCausalLM.from_pretrained("distilgpt2")  # Загрузка модели
             Decryptor.model.eval()
-            logging.info(f"Model loaded: {MODEL_ID}")
-            logging.info(f"Memory usage after model load: {psutil.virtual_memory().percent}%")
+            print("Модель загружена!")
 
     @staticmethod
     def decrypt(ciphertext: str) -> str:
