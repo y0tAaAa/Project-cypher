@@ -10,7 +10,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 from datetime import datetime
 from psycopg2 import IntegrityError
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import difflib
 import psutil
@@ -250,7 +250,7 @@ init_db()
 seed_initial_data()
 
 # ─── 9) Decryptor (локальная HF-модель) ─────────────────────────────
-MODEL_ID = "y0ta/fine_tuned_model"
+MODEL_ID = "distilgpt2"
 
 class Decryptor:
     model = None
@@ -261,11 +261,9 @@ class Decryptor:
         if Decryptor.model is None:
             logging.info(f"Memory usage before model load: {psutil.virtual_memory().percent}%")
             Decryptor.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-            quantization_config = BitsAndBytesConfig(load_in_4bit=True)
             Decryptor.model = AutoModelForCausalLM.from_pretrained(
                 MODEL_ID,
-                quantization_config=quantization_config,
-                device_map="auto"
+                device_map="cpu"
             )
             Decryptor.model.eval()
             logging.info(f"Model loaded: {MODEL_ID}")
@@ -282,12 +280,12 @@ class Decryptor:
                 padding=True,
                 truncation=True,
                 max_length=256
-            )
+            ).to("cpu")
             outputs = Decryptor.model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
-                max_new_tokens=20,
-                num_beams=2,
+                max_new_tokens=10,
+                num_beams=1,
                 no_repeat_ngram_size=2,
                 early_stopping=True
             )
