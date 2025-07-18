@@ -226,16 +226,22 @@ def seed_initial_data():
         # Начальные шифры с зашифрованным и эталонным текстом
         ciphers = [
             ('Caesar Cipher', 'Ancient', 'Rome', 'Shift by 3', 'Wklv lv d vhfuhw phvvdjh+', 'THIS IS A SECRET MESSAGE', '2025-04-26'),
-            ('Vigenere Cipher', 'Medieval', 'France', 'Polyalphabetic', 'KHOOR ZRUOG', 'HELLO WORLD', '2025-04-26'),
+            ('Vigenere Cipher', 'Medieval', 'France', 'Polyalphabetic with key HELLO', 'KHOOR ZRUOG', 'HELLO WORLD', '2025-04-26'),
             ('Enigma', 'WWII', 'Germany', 'Rotor machine', 'BJT QF UFJHLTK', 'THE ENEMY KNOWS', '2025-04-26'),
         ]
         for name, period, origin, princ, enc_text, plain_text, disc_date in ciphers:
             cur.execute("""
                 INSERT INTO "Ciphers" (name, historical_period, origin, encryption_principles, encrypted_text, plaintext, discovery_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (name) DO NOTHING
+                ON CONFLICT (name) DO UPDATE
+                SET historical_period = EXCLUDED.historical_period,
+                    origin = EXCLUDED.origin,
+                    encryption_principles = EXCLUDED.encryption_principles,
+                    encrypted_text = EXCLUDED.encrypted_text,
+                    plaintext = EXCLUDED.plaintext,
+                    discovery_date = EXCLUDED.discovery_date
             """, (name, period, origin, princ, enc_text, plain_text, disc_date))
-            logging.info(f"Seeded cipher: {name}")
+            logging.info(f"Seeded or updated cipher: {name}")
 
         conn.commit()
         cur.close()
@@ -250,7 +256,7 @@ init_db()
 seed_initial_data()
 
 # ─── 9) Decryptor (локальная HF-модель) ─────────────────────────────
-MODEL_ID = "distilgpt2"
+MODEL_ID = "y0ta/fine_tuned_model"
 
 class Decryptor:
     model = None
@@ -259,17 +265,41 @@ class Decryptor:
     @staticmethod
     def load_model():
         if Decryptor.model is None:
-            Decryptor.tokenizer = AutoTokenizer.from_pretrained("distilgpt2")  # Загрузка токенизатора
-            Decryptor.tokenizer.pad_token = Decryptor.tokenizer.eos_token    # Установка pad_token
-            Decryptor.model = AutoModelForCausalLM.from_pretrained("distilgpt2")  # Загрузка модели
+            logging.info(f"Memory usage before model load: {psutil.virtual_memory().percent}%")
+            Decryptor.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+            Decryptor.tokenizer.pad_token = Decryptor.tokenizer.eos_token
+            Decryptor.model = AutoModelForCausalLM.from_pretrained(
+                MODEL_ID,
+                device_map="cpu"
+            )
             Decryptor.model.eval()
-            print("Модель загружена!")
+            logging.info(f"Model loaded: {MODEL_ID}")
+            logging.info(f"Memory usage after model load: {psutil.virtual_memory().percent}%")
 
     @staticmethod
-    def decrypt(ciphertext: str) -> str:
+    def decrypt(ciphertext: str, cipher_name: str, cipher_principles: str = None) -> str:
         try:
             Decryptor.load_model()
-            prompt = f"Ciphertext: {ciphertext}\nPlaintext:"
+            # Формируем промпт с учётом шифра и его параметров
+            if cipher_name.lower() == "caesar cipher":
+                # Извлекаем сдвиг из принципов шифрования
+                shift = 3  # Значение по умолчанию
+                if cipher_principles:
+                    match = re.search(r'Shift by (\d+)', cipher_principles)
+                    if match:
+                        shift = int(match.group(1))
+                prompt = f"Decrypt the following Caesar Cipher (shift {shift}) ciphertext: {ciphertext} -> Plaintext: "
+            elif cipher_name.lower() == "vigenere cipher":
+                # Извлекаем ключ из принципов шифрования
+                key = "HELLO"  # Значение по умолчанию
+                if cipher_principles:
+                    match = re.search(r'key (\w+)', cipher_principles)
+                    if match:
+                        key = match.group(1)
+                prompt = f"Decrypt the following Vigenere Cipher (key {key}) ciphertext: {ciphertext} -> Plaintext: "
+            else:
+                prompt = f"Decrypt the following {cipher_name} ciphertext: {ciphertext} -> Plaintext: "
+
             inputs = Decryptor.tokenizer(
                 prompt,
                 return_tensors="pt",
@@ -280,13 +310,19 @@ class Decryptor:
             outputs = Decryptor.model.generate(
                 inputs.input_ids,
                 attention_mask=inputs.attention_mask,
-                max_new_tokens=10,
-                num_beams=1,
-                no_repeat_ngram_size=2,
+                max_new_tokens=20,  # Уменьшаем до 20, чтобы ограничить лишний текст
+                num_beams=5,  # Для повышения качества
+                length_penalty=2.0,  # Увеличиваем штраф за длину
+                repetition_penalty=1.2,  # Штраф за повторения
+                no_repeat_ngram_size=3,  # Избегаем повторяющихся фраз
                 early_stopping=True
             )
             text = Decryptor.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            result = text.split("Plaintext:")[-1].strip()
+            # Извлекаем только часть после "Plaintext: "
+            result = text.split("Plaintext: ")[-1].strip()
+            # Постобработка: обрезаем всё после "->", если оно есть
+            if "->" in result:
+                result = result.split("->")[0].strip()
             logging.info(f"Decrypted text: {result}")
             return result
         except Exception as e:
@@ -303,11 +339,20 @@ def index():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # Инициализируем переменные, чтобы избежать ошибок undefined
+    conn = None
+    cur = None
+    user = None
+    email = None
+    pwd = None
+
     if request.method == "POST":
         data = request.get_json(force=True)
-        email, pwd = data.get("email"), data.get("password")
+        email = data.get("email")
+        pwd = data.get("password")
         if not (email and pwd):
             return jsonify({"error": "Email и пароль обязательны"}), 400
+        
         conn = get_db_connection()
         cur = conn.cursor()
         logging.info(f"Attempting to login with email: {email}")
@@ -316,14 +361,18 @@ def login():
             (email,)
         )
         user = cur.fetchone()
-        cur.close()
-        conn.close()
         if user and check_password_hash(user[3], pwd):
             login_user(User(user[0], user[1], user[2]))
             logging.info(f"User logged in: {email}")
+            cur.close()
+            conn.close()
             return jsonify({"message": "Успешный вход", "redirect": "/"})
-        logging.warning(f"Failed login attempt for email: {email}")
-        return jsonify({"error": "Неверные данные"}), 401
+        else:
+            logging.warning(f"Failed login attempt for email: {email}")
+            cur.close()
+            conn.close()
+            return jsonify({"error": "Неверные данные"}), 401
+    
     return render_template("login.html")
 
 @app.route("/register", methods=["GET", "POST"])
@@ -423,13 +472,13 @@ def decrypt_text():
             return jsonify({"error": "Používateľ nebol nájdený. Prosím, prihláste sa znova."}), 401
 
         # Проверка существования шифра
-        cur.execute('SELECT plaintext FROM "Ciphers" WHERE cipher_id = %s', (cipher_id,))
+        cur.execute('SELECT name, plaintext, encryption_principles FROM "Ciphers" WHERE cipher_id = %s', (cipher_id,))
         cipher_data = cur.fetchone()
         if not cipher_data:
             cur.close()
             conn.close()
             return jsonify({"error": "Šifra nebola nájdená"}), 404
-        reference_text = cipher_data[0]  # Эталонный текст
+        cipher_name, reference_text, encryption_principles = cipher_data
 
         # Проверка существования модели
         cur.execute('SELECT model_id FROM "Models" WHERE model_id = %s', (model_id,))
@@ -442,7 +491,7 @@ def decrypt_text():
         # Дешифровка
         start_time = datetime.now()
         try:
-            dec = decryptor.decrypt(ct)
+            dec = decryptor.decrypt(ct, cipher_name, encryption_principles)
         except Exception as e:
             logging.error(f"Decryption failed for ciphertext '{ct}': {str(e)}")
             cur.close()

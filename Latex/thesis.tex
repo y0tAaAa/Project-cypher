@@ -1,0 +1,183 @@
+%% -----------------------------------------------------------------
+%% This file uses UTF-8 encoding
+%%
+%% For compilation use following command:
+%% latexmk -pdf -pvc -bibtex thesis
+%%
+%% -----------------------------------------------------------------
+%%                                     _     _      
+%%      _ __  _ __ ___  __ _ _ __ ___ | |__ | | ___ 
+%%     | '_ \| '__/ _ \/ _` | '_ ` _ \| '_ \| |/ _ \
+%%     | |_) | | |  __/ (_| | | | | | | |_) | |  __/
+%%     | .__/|_|  \___|\__,_|_| |_| |_|_.__/|_|\___|
+%%     |_|                                          
+%%
+%% -----------------------------------------------------------------
+\documentclass{kithesis}
+% Additional packages
+\usepackage[main=slovak,english]{babel}
+%\usepackage[pdftex]{graphicx}
+\usepackage{epstopdf}
+\DeclareGraphicsExtensions{.eps}
+\DeclareGraphicsExtensions{.pdf,.png,.jpg,.mps}
+\graphicspath{{figures/}} % priecinok na obrazky
+\usepackage{parskip}% 'zhusti' polozky obsahu
+\usepackage{pdfpages}
+\usepackage[euler]{textgreek} % pre pisanie greckych pismen priamo v texte
+\usepackage{mathtools}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{upgreek} % napr. $\upmu\mathrm{m}$ pre mikrometer ...
+\usepackage{listings}  % for source code
+\usepackage[noprefix]{nomencl}
+\makeglossary % prikaz na vytvorenie suboru .glo
+\usepackage{biblatex}
+\def\hyph{-\penalty0\hskip0pt\relax} %% toto je pre nedelitelnost slov, napr. M\hyph postupnosti - potom sa nerozdeli slovo na konci riadku
+\usepackage{textcomp} %na to aby som vedel pisat °
+\usepackage{nicefrac} % pekne zlomky
+\usepackage[justification=centering,caption=false,font=footnotesize]{subfig}
+\usepackage{multirow}
+\usepackage{relsize}
+\usepackage{bbding}
+\usepackage{threeparttable}
+\usepackage{xcolor}
+\usepackage{acronym}
+
+\usepackage{scrextend}
+\deffootnote[10pt]{10pt}{1pt}{\textsuperscript{\thefootnotemark}\,}
+
+
+% Listings settings
+% See for details: https://en.wikibooks.org/wiki/LaTeX/Source_Code_Listings
+\lstset{
+    basicstyle=\small\ttfamily,  % smaller typewriter font
+    showstringspaces=false       % don't show spaces in string
+}
+\def\lstlistingname{Zdrojový kód}
+% Variables
+%\thesisspec{figures/thesisspec.png} 0
+
+% definicnia premennej pre to aby sa nezobrzovalo cilo v zozname vybranej literatury %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\defbibenvironment{mypubs}
+{\list
+	{}
+	{\setlength{\leftmargin}{\bibhang}%
+	    %		\setlength{\itemindent}{\leftmargin}%
+				\setlength{\itemsep}{\bibitemsep}%
+	\setlength{\parsep}{\bibparsep}}}
+{\endlist}
+{\item}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+\title{Kryptoanalýza pomocou veľkých jazykových modelov}{Cryptanalysis using Large Language Models}
+
+
+\author{Meno}{Priezvisko}
+\supervisor{Ing. Zuzana Sokolová, PhD.} %veduci prace
+%\consultant{Ing. Zuzana Sokolová, PhD.} %konzultant
+%\college{University of Žilina}{Žilinská univerzita} %univerzita
+%\faculty{Faculty of Electrical Engineering and informatics}{Fakulta elektrotechniky a informatiky} %fakulta
+
+%\thesis{Master thesis}{Diplomová práca} %typ prace
+\submissiondate{01}{05}{2025}
+\fieldofstudy{informatika}
+\studyprogramme{počítačové siete}
+%\city{Košice} %mesto
+\keywords{kryptoanalýza, strojové učenie, jazykové modely, šifrovanie}{cryptanalysis, machine learning, language models, encryption}
+%\declaration{som nepodvadzal}
+
+\abstract{
+This project investigates the capabilities of neural network models (Large Language Models - LLMs) for cryptanalysis of classical ciphers. The system combines traditional cryptographic methods with modern machine learning approaches to create an efficient tool for decryption and analysis. The implementation includes a web interface, REST API, and integration with state-of-the-art language models.
+
+The project demonstrates the potential of using large language models in cryptanalysis and opens new possibilities for future research in this field. The system is designed with emphasis on scalability, security, and user experience.
+}{
+Tento projekt skúma možnosti neurónových sieťových modelov (Large Language Models - LLMs) pre kryptoanalýzu klasických šifier. Systém kombinuje tradičné kryptografické metódy s modernými prístupmi strojového učenia na vytvorenie efektívneho nástroja pre dešifrovanie a analýzu. Implementácia zahŕňa webové rozhranie, REST API a integráciu s modernými jazykovými modelmi.
+
+Projekt demonštruje potenciál využitia veľkých jazykových modelov v oblasti kryptoanalýzy a otvára nové možnosti pre budúci výskum v tejto oblasti. Systém je navrhnutý s dôrazom na škálovateľnosť, bezpečnosť a používateľskú prívetivosť.
+}
+
+\acknowledgment{Poďakovanie za podporu pri vývoji projektu a poskytnutie potrebných zdrojov.}
+
+
+% Load acronyms
+\input{acronyms}
+\addbibresource[label=refs]{bibliography.bib}
+%\addbibresource[label=ownpubs]{ownpubs.bib}
+%% -----------------------------------------------------------------
+%%          _                                       _   
+%%       __| | ___   ___ _   _ _ __ ___   ___ _ __ | |_ 
+%%      / _` |/ _ \ / __| | | | '_ ` _ \ / _ \ '_ \| __|
+%%     | (_| | (_) | (__| |_| | | | | | |  __/ | | | |_ 
+%%      \__,_|\___/ \___|\__,_|_| |_| |_|\___|_| |_|\__|
+%%                                                      
+%% -----------------------------------------------------------------
+
+\begin{document}
+%% Title page, abstract, declaration etc.:
+\frontmatter{}
+
+%% List of code listings, if you are using package minted
+%\listoflistings
+
+%\pagenumbering{arabic}
+%\printglossary[type=\acronymtype,title={\acrlistname},]
+%\printglossary[type=\acronymtype]
+%Glossaries
+%\printglossary
+
+
+%%%% Chapters
+\include{chapters/Chapter1}
+\include{chapters/Chapter2}
+\include{chapters/Chapter3}
+\include{chapters/Chapter4}
+\include{chapters/Chapter5}
+\include{chapters/Chapter6}
+
+%
+
+
+% good linebraking of bibtex url
+\setcounter{biburllcpenalty}{7000}
+\setcounter{biburlucpenalty}{8000}
+
+\footnotesize{
+% The bibliography
+\printbibliography[heading=bibintoc]
+}
+
+
+%\printbibliography
+%\addcontentsline{toc}{chapter}{\numberline{}Zoznam vybranej publikačnej činnosti autora}
+%\include{chapters/publikacie}
+% List of acronyms
+\printglossary[type=\acronymtype]
+%\label{theend}  % the last page of the thesis
+%% Appendix
+%\include{appendixes/prilohy-front}
+\include{appendixes/prilohy}
+\appendix
+\renewcommand\chaptername{Príloha}
+%\chapter*{Zoznam príloh}
+\include{appendixes/prilohaa}
+\include{appendixes/prilohab}
+%\include{appendixes/prilohac}
+%\include{appendixes/prilohad}
+%%
+
+
+
+
+
+
+
+% zivotopis autora
+%\curriculumvitae\protect
+%Táto časť\/ je nepovinná. Autor tu môže uviesť\/ svoje biografické
+%údaje, údaje o~záujmoch, účasti na~projektoch, účasti na~súťažiach,
+%získané ocenenia, zahraničné pobyty na~praxi, domácu prax, publikácie
+%a~pod.
+
+\end{document}

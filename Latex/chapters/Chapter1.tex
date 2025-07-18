@@ -1,0 +1,127 @@
+\chapter{Úvod do projektu kryptoanalýzy}
+
+\section{Prehľad projektu}
+Tento projekt predstavuje inovatívny prístup k riešeniu kryptografických problémov pomocou veľkých jazykových modelov (LLM - Large Language Models). Projekt kombinuje klasické kryptografické metódy s modernými technikami strojového učenia na vytvorenie efektívneho nástroja pre kryptoanalýzu.
+
+\section{Základné charakteristiky systému}
+Systém je navrhnutý ako webová aplikácia s komplexnou architektúrou, ktorá zahŕňa niekoľko kľúčových komponentov:
+
+\begin{itemize}
+    \item Webové rozhranie pre interakciu s používateľmi
+    \item Backend server postavený na Flask frameworku
+    \item Integrovaný jazykový model pre kryptoanalýzu
+    \item PostgreSQL databáza pre ukladanie dát
+    \item Systém autentifikácie a autorizácie
+\end{itemize}
+
+\section{Funkcionalita jazykového modelu}
+\subsection{Základné schopnosti modelu}
+Jazykový model implementovaný v systéme disponuje nasledujúcimi schopnosťami:
+
+\begin{itemize}
+    \item Automatická detekcia typu šifry
+    \item Analýza frekvencie znakov
+    \item Kontextová analýza textu
+    \item Generovanie možných kľúčov
+    \item Verifikácia dešifrovaného textu
+\end{itemize}
+
+\subsection{Pokročilé funkcie}
+Model obsahuje aj pokročilé funkcie pre spracovanie textu:
+
+\begin{itemize}
+    \item Adaptívne učenie z úspešných dešifrovaní
+    \item Viacjazyčná podpora (SK, EN, CZ)
+    \item Štatistická analýza úspešnosti
+    \item Optimalizácia výkonu pomocou GPU akcelerácie
+    \item Automatická korekcia chýb
+\end{itemize}
+
+\section{Interakcia s používateľom}
+Systém poskytuje intuitívne používateľské rozhranie s nasledujúcimi funkciami:
+
+\begin{itemize}
+    \item Nahrávanie šifrovaných textov
+    \item Výber metódy dešifrovania
+    \item Sledovanie procesu dešifrovania v reálnom čase
+    \item Zobrazenie štatistík a analýz
+    \item Export výsledkov v rôznych formátoch
+\end{itemize}
+
+\chapter{Technická implementácia}
+
+\section{Architektúra systému}
+\subsection{Serverová časť}
+Backend systému je implementovaný v jazyku Python s využitím nasledujúcich technológií:
+
+\begin{itemize}
+    \item Flask 3.1.0 pre REST API
+    \item PostgreSQL pre perzistenciu dát
+    \item PyTorch 2.6.0 pre ML operácie
+    \item Transformers 4.51.1 pre prácu s jazykovými modelmi
+\end{itemize}
+
+\subsection{Databázová schéma}
+Systém využíva komplexnú databázovú schému s nasledujúcimi hlavnými tabuľkami:
+
+\begin{itemize}
+    \item Users - správa používateľov
+    \item Ciphers - informácie o šifrách
+    \item Models - správa modelov
+    \item Decryption\_Attempts - záznamy o pokusoch
+    \item Decryption\_Results - výsledky dešifrovania
+    \item Manual\_Corrections - manuálne korekcie
+\end{itemize}
+
+\section{Bezpečnostné opatrenia}
+Systém implementuje viacero bezpečnostných mechanizmov:
+
+\begin{itemize}
+    \item Hašovanie hesiel pomocou bcrypt
+    \item OAuth 2.0 pre autentifikáciu
+    \item SSL/TLS šifrovanie pre databázové spojenie
+    \item Rate limiting pre API endpointy
+    \item Ochrana proti SQL injection a XSS útokom
+\end{itemize}
+
+\chapter{Proces vývoja}
+
+\section{Metodika vývoja}
+Projekt bol vyvíjaný pomocou agilnej metodológie s nasledujúcimi charakteristikami:
+
+\begin{itemize}
+    \item Iteratívny prístup k vývoju
+    \item Pravidelné aktualizácie a optimalizácie
+    \item Kontinuálne testovanie
+    \item Automatizované nasadenie
+\end{itemize}
+
+\section{História vývoja}
+Vývoj projektu prebiehal v troch hlavných fázach:
+
+\subsection{Fáza 1: Základná implementácia (Apríl 2025)}
+\begin{itemize}
+    \item Implementácia základného servera
+    \item Vytvorenie používateľského rozhrania
+    \item Integrácia autentifikácie
+\end{itemize}
+
+\subsection{Fáza 2: Vylepšenia a optimalizácia}
+\begin{itemize}
+    \item Optimalizácia výkonu servera
+    \item Riešenie problémov s pamäťou
+    \item Aktualizácia závislostí
+\end{itemize}
+
+\subsection{Fáza 3: Finálne úpravy}
+\begin{itemize}
+    \item Aktualizácia požiadaviek
+    \item Finálne vylepšenia
+    \item Optimalizácia výkonu
+\end{itemize}
+
+\chapter{Záver}
+
+Projekt predstavuje komplexné riešenie v oblasti kryptoanalýzy, ktoré kombinuje klasické kryptografické metódy s modernými prístupmi strojového učenia. Systém poskytuje robustnú platformu pre výskum a praktické aplikácie v oblasti bezpečnosti a kryptografie.
+
+Implementované riešenie demonštruje potenciál využitia veľkých jazykových modelov v oblasti kryptoanalýzy a otvára nové možnosti pre budúci výskum v tejto oblasti. Systém je navrhnutý s dôrazom na škálovateľnosť, bezpečnosť a používateľskú prívetivosť. 

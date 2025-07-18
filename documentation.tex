@@ -1,0 +1,682 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[slovak]{babel}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+
+% Page geometry
+\geometry{
+    a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=2.5cm,
+    right=2.5cm
+}
+
+% Listings settings for code
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    showstringspaces=false,
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!60!black},
+    stringstyle=\color{red},
+    literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+             {ý}{{\'y}}1 {ä}{{\\"a}}1 {ľ}{{\v{l}}}1 {š}{{\v{s}}}1 {č}{{\v{c}}}1
+             {ť}{{\v{t}}}1 {ž}{{\v{z}}}1 {ň}{{\v{n}}}1 {ď}{{\v{d}}}1 {ô}{{\^o}}1
+}
+
+% Title information
+\title{Projekt: Kryptoanalýza klasických šifier pomocou veľkých jazykových modelov\\\large Technická dokumentácia}
+\author{}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Anotácia}
+Tento dokument predstavuje technickú dokumentáciu projektu zameraného na kryptografickú analýzu klasických šifrovacích metód s využitím veľkých jazykových modelov (LLM). Cieľom projektu je výskum a implementácia inovatívnych kryptoanalytických postupov, ktoré kombinujú tradičné metódy lúštenia šifier s modernými technikami strojového učenia. Vytvorený systém umožňuje dešifrovanie klasických šifier (Cézarova šifra, substitučné a Vigenèrovo šifrovanie, transpozičné šifry a pod.) pomocou LLM modelov, pričom poskytuje webovú aplikáciu na nahrávanie zašifrovaných textov, sledovanie výsledkov dešifrovania a správu používateľov. Dokumentácia popisuje architektúru mikroservisného systému, návrh databázy, integráciu LLM, implementačné detaily, webovú aplikáciu, bezpečnostné mechanizmy, ukážky SQL dotazov, testovanie, históriu vývoja, budúce vylepšenia, nasadenie a údržbu, a záver s zhodnotením prínosov projektu.
+
+\section{Úvod}
+\subsection{História kryptoanalýzy}
+Kryptografia a kryptoanalýza majú bohatú históriu siahajúcu tisíce rokov do minulosti. Už v staroveku sa používali jednoduché šifrové techniky -- napríklad v Spartskom vojsku transpozičná šifra so skytalou (kožený prúžok omotaný okolo tyče) na maskovanie textu. V 1. storočí pred n.l. zaviedol Julius Caesar jednoduchú substitučnú šifru (tzv. Cézarova šifra), v ktorej sú písmená posunuté o stanovený počet pozícií v abecede. Po stáročia sa vývoj šifier a metód ich lúštenia (kryptoanalýzy) uberal ruka v ruke -- významným medzníkom bol 9. storočie n.l., keď arabský vedec Al-Kindí opísal metódu frekvenčnej analýzy na lámanie monoalfabetických substitučných šifier. Frekvenčná analýza využíva štatistické rozloženie písmen v jazyku a umožnila po prvý raz systematicky lúštiť zašifrované správy bez znalosti kľúča. Ďalší rozvoj priniesli polyalfabetické šifry (napr. Vigenèrova šifra zo 16. storočia), ktoré frekvenčnú analýzu sťažili -- ich prelomenie však umožnili nové postupy (napr. Friedmanov index zhody pre určenie dĺžky kľúča Vigenèrovej šifry). V 20. storočí počas 2. svetovej vojny dosiahol pokrok kryptoanalýzy vrchol v prelomení nemeckej šifry Enigma, na čom sa podieľali matematické postupy aj prvé elektromechanické počítače. História teda ukazuje neustály súboj medzi tvorcami šifier a kryptoanalytikmi -- každá nová šifra viedla k vynálezu nových metód na jej prelomenie.
+
+\subsection{Prečo LLM v kryptoanalýze}
+V súčasnosti do tejto oblasti vstupujú metódy umelej inteligencie a strojového učenia. Veľké jazykové modely (LLM) ako GPT-3 alebo GPT-4 preukázali schopnosť analyzovať a generovať prirodzený jazyk, a otvára sa otázka, do akej miery dokážu pomôcť pri lúštení zašifrovaných textov. Klasická kryptoanalýza je často formulovaná ako problém hľadania správneho kľúča alebo princípu šifry pomocou matematických a štatistických metód. LLM na to idú z iného smeru -- ako modely jazyka sa snažia predpovedať najpravdepodobnejšie slová a vety, ktoré by mohli byť v texte. Tým pádom môžu využiť svoje znalosti o štruktúre jazyka na odhalenie vzorcov v šifrovanom texte.
+
+\section{Architektúra systému}
+Systém je navrhnutý ako moderná webová aplikácia s mikroservisnou architektúrou. Hlavné komponenty zahŕňajú:
+
+\begin{itemize}
+    \item Webový server (Flask) -- spracováva HTTP požiadavky, autentifikáciu a biznis logiku
+    \item Databáza (PostgreSQL) -- ukladá údaje o používateľoch, pokusoch a výsledkoch
+    \item LLM modul -- obsahuje modely a logiku pre dešifrovanie
+    \item Webové rozhranie -- poskytuje používateľské rozhranie (HTML, CSS, JavaScript)
+\end{itemize}
+
+\section{Návrh databázy}
+\subsection{Konceptuálny model}
+Návrh databázy prešiel troma úrovňami: konceptuálny model, logický model a fyzický model. V tejto sekcii najprv popíšeme konceptuálny ER model a entity, potom logický model s atribútmi a väzbami a nakoniec fyzickú realizáciu v PostgreSQL vrátane schém tabuliek.
+
+\subsubsection{Entity}
+\begin{itemize}
+    \item \textbf{Šifry} -- reprezentujú druhy klasických šifier, ktoré systém eviduje a vie analyzovať. Každá šifra má:
+    \begin{itemize}
+        \item Identifikátor
+        \item Názov
+        \item Historické obdobie pôvodu
+        \item Krajina/miesto vzniku
+        \item Princíp šifrovania
+        \item Ukážkový zašifrovaný text a plaintext
+    \end{itemize}
+    
+    \item \textbf{Modely} -- predstavujú LLM modely použité na dešifrovanie:
+    \begin{itemize}
+        \item Identifikátor
+        \item Názov modelu
+        \item Zameranie/typ
+        \item Verzia
+    \end{itemize}
+    
+    \item \textbf{Pokusy o dešifrovanie} -- každá požiadavka používateľa:
+    \begin{itemize}
+        \item ID pokusu
+        \item Referencia na používateľa
+        \item Referencia na šifru a model
+        \item Čas začiatku a konca
+        \item Indikátor úspechu
+        \item Percento správnosti
+        \item Zašifrovaný a dešifrovaný text
+    \end{itemize}
+    
+    \item \textbf{Výsledky dešifrovania} -- detailné výstupy:
+    \begin{itemize}
+        \item ID výsledku
+        \item Referencia na pokus
+        \item Vygenerovaný text
+        \item Miera podobnosti
+        \item Čitateľnosť výstupu
+    \end{itemize}
+    
+    \item \textbf{Manuálne korekcie} -- ručné opravy výstupov:
+    \begin{itemize}
+        \item ID korekcie
+        \item Referencia na výsledok
+        \item Korektor (používateľ)
+        \item Percento zmien
+        \item Finálny text
+    \end{itemize}
+    
+    \item \textbf{Používatelia} -- registrovaní používatelia:
+    \begin{itemize}
+        \item ID používateľa
+        \item Používateľské meno
+        \item E-mail
+        \item Hash hesla
+        \item Dátum vytvorenia účtu
+        \item OAuth identifikátor
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Vzťahy medzi entitami}
+\begin{itemize}
+    \item Používateľ 1:N Pokusy o dešifrovanie
+    \item Šifry 1:N Pokusy
+    \item Modely 1:N Pokusy
+    \item Pokusy 1:1/1:N Výsledky
+    \item Výsledky 1:N Manuálne korekcie
+\end{itemize}
+
+\subsection{Logický model}
+Logický model upresňuje detailnú štruktúru databázy. Pre implementáciu sme zvolili relačný databázový model v PostgreSQL.
+
+\subsubsection{Tabuľky a ich štruktúra}
+\begin{lstlisting}[language=SQL]
+CREATE TABLE "Users" (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(256) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE "Ciphers" (
+    cipher_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    historical_period VARCHAR(50),
+    origin VARCHAR(50),
+    encryption_principles TEXT,
+    encrypted_text TEXT,
+    plaintext TEXT
+);
+
+CREATE TABLE "Models" (
+    model_id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    version VARCHAR(20) NOT NULL
+);
+
+CREATE TABLE "Decryption_Attempts" (
+    attempt_id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES "Users"(user_id),
+    cipher_id INTEGER REFERENCES "Ciphers"(cipher_id),
+    model_id INTEGER REFERENCES "Models"(model_id),
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    success BOOLEAN NOT NULL,
+    correctness_percentage DECIMAL(5,2),
+    encrypted_text TEXT NOT NULL,
+    decrypted_text TEXT
+);
+
+CREATE TABLE "Decryption_Results" (
+    result_id SERIAL PRIMARY KEY,
+    attempt_id INTEGER REFERENCES "Decryption_Attempts"(attempt_id),
+    model_output TEXT NOT NULL,
+    similarity_measure DECIMAL(5,2),
+    readability_level DECIMAL(5,2)
+);
+
+CREATE TABLE "Manual_Corrections" (
+    correction_id SERIAL PRIMARY KEY,
+    result_id INTEGER REFERENCES "Decryption_Results"(result_id),
+    corrector INTEGER REFERENCES "Users"(user_id),
+    changed_percentage DECIMAL(5,2),
+    final_text TEXT NOT NULL
+);
+\end{lstlisting}
+
+\section{Implementačné detaily}
+\subsection{Server a API endpointy}
+Server je implementovaný v jazyku Python s využitím frameworku Flask. Hlavné endpointy zahŕňajú:
+
+\begin{itemize}
+    \item \texttt{/register}, \texttt{/login}, \texttt{/logout} -- správa používateľov
+    \item \texttt{/decrypt} -- spracovanie požiadaviek na dešifrovanie
+    \item \texttt{/attempts} -- história pokusov
+    \item \texttt{/correct} -- uloženie manuálnych korekcií
+\end{itemize}
+
+\subsection{Integrácia LLM}
+Pre prácu s jazykovými modelmi využívame knižnicu \texttt{transformers} od Hugging Face. Hlavné komponenty:
+
+\begin{itemize}
+    \item Načítanie modelu: Používame model DistilGPT-2 pre jeho dobrý pomer výkon/veľkosť
+    \item Tokenizácia: Vstupný text je tokenizovaný pomocou GPT-2 tokenizéra
+    \item Generovanie: Model generuje najpravdepodobnejší otvorený text
+\end{itemize}
+
+\subsection{Databázové operácie}
+Komunikácia s PostgreSQL databázou je realizovaná cez knižnicu \texttt{psycopg2}. Príklad SQL dotazu pre overenie prihlasovacích údajov:
+
+\begin{lstlisting}[language=SQL]
+SELECT user_id, username, email, password_hash
+FROM "Users"
+WHERE email = %s;
+\end{lstlisting}
+
+\section{Webová aplikácia}
+\subsection{Front-end a používateľské funkcie}
+Webová aplikácia poskytuje používateľsky prívetivé rozhranie na využívanie funkcionalít systému. Je navrhnutá tak, aby zjednodušila prácu kryptoanalytika.
+
+\subsection{Architektúra front-endu}
+Aplikácia využíva:
+\begin{itemize}
+    \item Serverom renderované HTML šablóny (Flask \texttt{render\_template})
+    \item Dynamické načítavanie dát cez JavaScript (AJAX)
+    \item CSS framework Bulma pre moderný vzhľad
+    \item Material Icons pre zobrazenie ikoniek
+\end{itemize}
+
+\subsection{Autentifikácia a správa používateľov}
+\begin{itemize}
+    \item Prihlasovanie stráži Flask-Login
+    \item Registrácia nového účtu vyžaduje meno, e-mail a heslo
+    \item Integrovaná možnosť OAuth prihlásenia cez Google
+    \item Heslá sú hashované algoritmom PBKDF2
+\end{itemize}
+
+\subsection{Hlavná stránka -- Dešifrovanie}
+Hlavné rozhranie je rozdelené do dvoch stĺpcov:
+\begin{itemize}
+    \item Ľavý bočný panel
+    \begin{itemize}
+        \item Navigačné tlačidlá
+        \item Timeline s históriou pokusov
+        \item Možnosti nastavení
+    \end{itemize}
+    \item Pravý obsahový panel
+    \begin{itemize}
+        \item Formulár na dešifrovanie textu
+        \item Výber šifry a modelu
+        \item Zobrazenie výsledkov
+    \end{itemize}
+\end{itemize}
+
+\subsection{Tabulkové údaje}
+Zobrazuje históriu dešifrovaní vo forme tabuľky s nasledujúcimi stĺpcami:
+
+\begin{longtable}{p{0.1\textwidth}p{0.1\textwidth}p{0.1\textwidth}p{0.1\textwidth}p{0.1\textwidth}p{0.1\textwidth}p{0.15\textwidth}p{0.15\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Šifra} & \textbf{Model} & \textbf{Začiatok} & \textbf{Koniec} & \textbf{Úspech} & \textbf{Zašifrovaný text} & \textbf{Dešifrovaný text} \\
+\midrule
+\endhead
+1 & Cézarova & GPT-2 & 2024-03-14 10:00 & 2024-03-14 10:01 & 95\% & "Khoor zruog" & "Hello world" \\
+2 & Vigenère & GPT-3 & 2024-03-14 10:15 & 2024-03-14 10:16 & 87\% & "Wnqqs iptqf" & "Hello world" \\
+\bottomrule
+\end{longtable}
+
+Tabuľka obsahuje kompletný prehľad všetkých pokusov o dešifrovanie, vrátane:
+\begin{itemize}
+    \item Časových značiek začiatku a konca
+    \item Použitého modelu a typu šifry
+    \item Percentuálnej úspešnosti dešifrovania
+    \item Vstupného a výstupného textu
+\end{itemize}
+
+\section{Bezpečnostné opatrenia}
+Pri návrhu systému sme kládli dôraz na to, aby bol bezpečný, najmä keď pracuje s používateľskými účtami a potenciálne citlivými dátami. Kombinujeme viacero vrstiev ochrany:
+
+\subsection{Hašovanie hesiel}
+Heslá používateľov sa v databáze nikdy neukladajú v čitateľnej forme. Využívame funkcie \texttt{generate\_password\_hash()} a \texttt{check\_password\_hash()} z Flask/Werkzeug, ktoré implementujú silné jednosmerné hashovanie hesiel (predvolene PBKDF2-SHA256 so soľou).
+
+\subsection{OAuth 2.0 integrácia}
+Pre zvýšenie bezpečnosti a komfortu majú používatelia možnosť využiť externého poskytovateľa identity -- Google. OAuth 2.0 implementujeme pomocou knižnice Authlib, ktorá sa stará o celú výmenu tokenov.
+
+\subsection{Bezpečné pripojenie k databáze}
+\begin{itemize}
+    \item Komunikácia cez zabezpečené SSL spojenie
+    \item Prístup chránený heslom a obmedzenými právami
+    \item Tajnosti uložené v súbore \texttt{.env}
+\end{itemize}
+
+\subsection{Ochrana proti SQL injection}
+Všetky databázové operácie realizujeme pomocou parametrov v SQL dotazoch, nie skladaním reťazcov. Napríklad:
+
+\begin{lstlisting}[language=SQL]
+cur.execute("SELECT ... WHERE email=%s", (email,))
+\end{lstlisting}
+
+\subsection{Rate limiting}
+Obmedzenie počtu požiadaviek na:
+\begin{itemize}
+    \item Max 5 dešifrovaní za minútu na používateľa
+    \item Max 20 requestov/min z jednej IP
+\end{itemize}
+
+\subsection{XSS a ochrana na strane klienta}
+\begin{itemize}
+    \item Bezpečné zobrazovanie údajov v HTML
+    \item Escapovanie špeciálnych znakov
+    \item Používanie textNode alebo innerText namiesto innerHTML
+\end{itemize}
+
+\section{Ukážky dôležitých SQL dotazov}
+V tejto časti uvádzame niekoľko kľúčových SQL dotazov použitých v aplikácii, spolu s vysvetlením ich funkcie.
+
+\subsection{Overenie prihlasovacích údajov používateľa}
+\begin{lstlisting}[language=SQL]
+SELECT user_id, username, email, password_hash
+FROM "Users"
+WHERE email = %s;
+\end{lstlisting}
+
+Tento dotaz vyberá riadok používateľa podľa e-mailovej adresy. Aplikácia následne porovná hash hesla s tým, čo používateľ zadal.
+
+\subsection{Vloženie nového pokusu o dešifrovanie}
+\begin{lstlisting}[language=SQL]
+INSERT INTO "Decryption_Attempts"
+(cipher_id, model_id, user_id, start_time, end_time, success,
+correctness_percentage, encrypted_text, decrypted_text)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+RETURNING attempt_id;
+\end{lstlisting}
+
+Tento dotaz vloží nový riadok do tabuľky pokusov so všetkými detailmi.
+
+\subsection{Výber histórie dešifrovacích pokusov}
+\begin{lstlisting}[language=SQL]
+SELECT da.attempt_id,
+       c.name AS cipher_name,
+       m.name AS model_name,
+       da.start_time,
+       da.end_time,
+       da.success,
+       da.correctness_percentage,
+       da.encrypted_text,
+       da.decrypted_text,
+       dr.result_id,
+       dr.model_output,
+       dr.similarity_measure,
+       dr.readability_level,
+       mc.correction_id,
+       mc.corrector,
+       mc.changed_percentage,
+       mc.final_text
+FROM "Decryption_Attempts" da
+JOIN "Ciphers" c ON da.cipher_id = c.cipher_id
+JOIN "Models" m ON da.model_id = m.model_id
+LEFT JOIN "Decryption_Results" dr ON da.attempt_id = dr.attempt_id
+LEFT JOIN "Manual_Corrections" mc ON dr.result_id = mc.result_id
+WHERE da.user_id = %s
+ORDER BY da.start_time DESC;
+\end{lstlisting}
+
+Tento komplexný dotaz spája viacero tabuliek pre zobrazenie kompletnej histórie pokusov.
+
+\subsection{Uloženie manuálnej korekcie výsledku}
+\begin{lstlisting}[language=SQL]
+INSERT INTO "Manual_Corrections"
+(result_id, corrector, changed_percentage, final_text)
+VALUES (%s, %s, %s, %s);
+\end{lstlisting}
+
+Tento dotaz pridá nový záznam do tabuľky manuálnych korekcií.
+
+\section{Testovanie}
+Testovanie systému prebiehalo na viacerých úrovniach, aby sme zabezpečili spoľahlivosť a kvalitu implementácie.
+
+\subsection{Jednotkové testy}
+Implementovali sme sadu jednotkových testov pre kľúčové komponenty:
+\begin{itemize}
+    \item Testy šifrovacích/dešifrovacích funkcií
+    \item Testy autentifikácie a správy používateľov
+    \item Testy databázových operácií
+    \item Testy integrácie s LLM
+\end{itemize}
+
+\subsection{Integračné testy}
+Overenie spolupráce komponentov:
+\begin{itemize}
+    \item End-to-end testy webového rozhrania
+    \item Testy komunikácie medzi serverom a databázou
+    \item Testy správneho fungovania celého procesu dešifrovania
+\end{itemize}
+
+\section{História vývoja}
+\subsection{Analýza histórie commitov}
+Vývoj projektu prebiehal v nasledujúcich hlavných fázach:
+
+\begin{enumerate}
+    \item \textbf{Inicializácia projektu} (Commit: Initial commit)
+    \begin{itemize}
+        \item Vytvorenie základnej štruktúry projektu
+        \item Nastavenie Flask aplikácie
+        \item Inicializácia databázy
+    \end{itemize}
+    
+    \item \textbf{Implementácia databázovej vrstvy} (Commit: Database implementation)
+    \begin{itemize}
+        \item Vytvorenie SQL schém
+        \item Implementácia modelov
+        \item Migrácie databázy
+    \end{itemize}
+    
+    \item \textbf{Integrácia LLM} (Commit: LLM integration)
+    \begin{itemize}
+        \item Pridanie DistilGPT-2 modelu
+        \item Implementácia dešifrovacieho modulu
+        \item Optimalizácia výkonu
+    \end{itemize}
+    
+    \item \textbf{Vývoj webového rozhrania} (Commit: Web UI development)
+    \begin{itemize}
+        \item Implementácia používateľského rozhrania
+        \item Pridanie autentifikácie
+        \item Vylepšenie UX
+    \end{itemize}
+    
+    \item \textbf{Testovanie a ladenie} (Commit: Testing and optimization)
+    \begin{itemize}
+        \item Jednotkové testy
+        \item Integračné testy
+        \item Výkonnostné testy
+    \end{itemize}
+    
+    \item \textbf{Dokumentácia a finalizácia} (Commit: Documentation and cleanup)
+    \begin{itemize}
+        \item Technická dokumentácia
+        \item Používateľská príručka
+        \item Čistenie kódu
+    \end{itemize}
+\end{enumerate}
+
+\section{Budúce vylepšenia}
+Na základe analýzy súčasného stavu projektu navrhujeme nasledujúce vylepšenia:
+
+\subsection{Rozšírenie podporovaných šifier}
+\begin{itemize}
+    \item Implementácia ďalších historických šifier:
+    \begin{itemize}
+        \item Playfairova šifra
+        \item Hillova šifra
+        \item ADFGVX šifra
+    \end{itemize}
+    \item Podpora moderných šifrovacích algoritmov
+    \item Rozšírenie databázy ukážkových textov
+\end{itemize}
+
+\subsection{Vylepšenie modelov}
+\begin{itemize}
+    \item Fine-tuning modelov na špecifické šifry
+    \item Implementácia ensemble prístupu
+    \item Experimentovanie s novšími architektúrami
+    \item Optimalizácia hyperparametrov
+\end{itemize}
+
+\subsection{Vylepšenie používateľského rozhrania}
+\begin{itemize}
+    \item Interaktívna vizualizácia procesu dešifrovania
+    \item Real-time aktualizácie stavu
+    \item Mobilná verzia aplikácie
+    \item Rozšírené štatistiky a reporty
+\end{itemize}
+
+\subsection{Optimalizácia výkonu}
+\begin{itemize}
+    \item Implementácia cachingu
+    \item Distribuované spracovanie
+    \item Optimalizácia databázových dotazov
+    \item Škálovanie na cloud platformy
+\end{itemize}
+
+\subsection{Bezpečnostné vylepšenia}
+\begin{itemize}
+    \item Implementácia 2FA
+    \item Audit logov
+    \item Pravidelné bezpečnostné audity
+    \item Vylepšená ochrana proti útokom
+\end{itemize}
+
+\subsection{Rozšírenie funkcionality}
+\begin{itemize}
+    \item API pre externé aplikácie
+    \item Podpora viacerých jazykov
+    \item Export/import funkcionalita
+    \item Integrácia s inými nástrojmi
+\end{itemize}
+
+\section{Nasadenie a údržba}
+\subsection{Docker kontajnerizácia}
+Aplikácia je zabalená do Docker kontajnera pre jednoduché nasadenie:
+\begin{itemize}
+    \item Multi-stage Dockerfile
+    \item Docker Compose pre orchestráciu služieb
+    \item Automatické buildy a nasadenie
+\end{itemize}
+
+\subsection{CI/CD pipeline}
+Využívame GitHub Actions na automatizáciu:
+\begin{itemize}
+    \item Spustenie testov a lintera
+    \item Build a push Docker image
+    \item Automatické nasadenie na produkčný server
+\end{itemize}
+
+\subsection{Zálohovanie dát}
+Stratégia zálohovania:
+\begin{itemize}
+    \item Nočný PostgreSQL dump
+    \item Uchovávanie záloh v cloud storage
+    \item Zálohovanie natrénovaných modelov
+\end{itemize}
+
+\subsection{Monitorovanie a logovanie}
+Implementované nástroje:
+\begin{itemize}
+    \item Logging do stdout
+    \item Health-check endpoint
+    \item Prometheus/Grafana monitoring
+    \item Error tracking cez Sentry
+\end{itemize}
+
+\section{Záver}
+Projekt Kryptoanalýza klasických šifier pomocou veľkých jazykových modelov ukázal, že prepojenie tradičnej kryptografie s modernými metódami umelej inteligencie je nielen možné, ale aj veľmi perspektívne. Vytvorili sme funkčný systém, ktorý dokáže za pomoci LLM modelu (GPT-2) automaticky dešifrovať jednoduché šifry a učiť sa z príkladov. Systém pozostáva z prehľadnej webovej aplikácie pre používateľov, robustného serverového backendu postaveného na Flasku, a výkonného databázového úložiska PostgreSQL, ktoré spolu tvoria ucelenú platformu pre experimentovanie s kryptoanalýzou.
+
+Hlavným prínosom projektu je inovatívny prístup ku kryptoanalýze: namiesto ručnej frekvenčnej analýzy či brute-force sme využili znalosti zachytené v jazykovom modeli. Model bol schopný rozoznať vzory v zašifrovanom texte a v mnohých prípadoch poskytnúť správny alebo aspoň čiastočne správny otvorený text. To potvrdzuje hypotézu, že LLM (tréningom na obrovských množstvách textu) v sebe implicitne nesú informácie použiteľné pri lúštení šifier -- vedia generovať zmysluplný text aj z nezrozumiteľných vstupov.
+
+Zároveň sme identifikovali obmedzenia: komplexnejšie klasické šifry (polyalfabetické s dlhým kľúčom, transpozičné so zamotanou permutáciou) kladú na LLM vyššie nároky a samotný generatívny prístup nemusí stačiť. V týchto prípadoch by bolo vhodné kombinovať AI s tradičnými algoritmickými metódami. Náš systém je modulárny, takže takú kombináciu by bolo možné v budúcnosti doplniť.
+
+Z pohľadu praktických výsledkov systém poskytuje:
+\begin{itemize}
+    \item Rýchle automatizované dešifrovanie pre bežné školské/praktické príklady šifier
+    \item Platformu pre ďalší výskum -- možnosť zapojiť nové modely alebo techniky
+    \item Dôkaz konceptu, že LLM vedia riešiť štruktúrované problémy
+\end{itemize}
+
+Na záver možno konštatovať, že projekt splnil stanovené ciele: vytvorili sme funkčnú implementáciu, zdokumentovali architektúru, a v testoch sme dosiahli zaujímavé výsledky. Systém je pripravený pre ďalšie používanie aj rozširovanie. Kombinácia klasickej kryptografie a LLM je stále pomerne nová oblasť a náš projekt k nej prispieva konkrétnym riešením.
+
+\section{Zoznam literatúry}
+\begin{enumerate}
+    \item IBM -- The History of Cryptography. Think Blog by IBM, 2021. (História kryptografie od staroveku po súčasnosť, vrátane zmienky o Al-Kindím a frekvenčnej analýze)
+
+    \item Maskey, U., Zhu, C., Naseem, U. -- "Benchmarking Large Language Models for Cryptanalysis and Mismatched-Generalization". arXiv preprint arXiv:2505.24621, May 2025. (Výskumný článok hodnotiaci schopnosti viacerých LLM dešifrovať rôzne šifry v rôznych podmienkach)
+
+    \item Sugio, N. -- "Implementation of Cryptanalytic Programs Using ChatGPT". IACR Cryptology ePrint Archive, Report 2024/240, 2024. (Štúdia demonštrujúca použitie pokročilého LLM ChatGPT na generovanie zdrojového kódu pre kryptanalýzu moderných šifier, vrátane diskusie potenciálu a obmedzení AI v kryptografii)
+
+    \item Reddit -- GPT-4 can break encryption (Caesar Cipher). príspevok užívateľa himey72 v subreddite r/ChatGPT, apríl 2023. (Diskusia potvrdzujúca, že GPT-4 si poradí s Cézarovou šifrou, no s inými šiframi má problémy)
+
+    \item CEUR Workshop Proceedings -- "Neural Cryptanalysis of Classical Ciphers". HistoCrypt 2018. (Práca prezentujúca metódu využitia neurónových sietí v kombinácii s klasickými technikami kryptoanalýzy na automatizovanie lúštenia klasických šifier)
+\end{enumerate}
+
+\section{Integrácia veľkých jazykových modelov}
+\subsection{Výber a implementácia modelov}
+Pre kryptoanalýzu sme zvolili model DistilGPT-2 z nasledujúcich dôvodov:
+\begin{itemize}
+    \item Dobrý pomer výkon/veľkosť -- model je dostatočne výkonný pre naše potreby, ale zároveň nie je príliš náročný na zdroje
+    \item Možnosť lokálneho behu -- nie je potrebné volať externé API
+    \item Podpora knižnice transformers -- jednoduchá integrácia a fine-tuning
+    \item Vhodnosť pre generatívne úlohy -- model je trénovaný na predikciu nasledujúcich tokenov
+\end{itemize}
+
+\subsection{Architektúra dešifrovacieho modulu}
+Dešifrovací modul je implementovaný v triede Decryptor s nasledujúcou štruktúrou:
+
+\begin{lstlisting}[language=Python]
+class Decryptor:
+    def __init__(self, model_name="distilgpt2"):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        
+    def decrypt(self, encrypted_text, max_length=100):
+        # Tokenizácia vstupu
+        inputs = self.tokenizer(encrypted_text, return_tensors="pt")
+        
+        # Generovanie výstupu
+        outputs = self.model.generate(
+            inputs["input_ids"],
+            max_length=max_length,
+            num_return_sequences=1,
+            no_repeat_ngram_size=2,
+            do_sample=True,
+            top_k=50,
+            top_p=0.95,
+            temperature=0.7
+        )
+        
+        # Dekódovanie výstupu
+        decrypted_text = self.tokenizer.decode(outputs[0])
+        return decrypted_text
+\end{lstlisting}
+
+\subsection{Proces dešifrovania}
+Proces dešifrovania prebieha v nasledujúcich krokoch:
+
+\begin{enumerate}
+    \item \textbf{Príprava vstupu}:
+    \begin{itemize}
+        \item Zašifrovaný text je tokenizovaný pomocou GPT-2 tokenizéra
+        \item Pridanie špeciálnych tokenov a padding
+        \item Konverzia na tenzory PyTorch
+    \end{itemize}
+    
+    \item \textbf{Generovanie}:
+    \begin{itemize}
+        \item Model generuje najpravdepodobnejšie tokeny
+        \item Použitie beam search alebo sampling stratégií
+        \item Aplikácia parametrov ako temperature a top-k/top-p
+    \end{itemize}
+    
+    \item \textbf{Post-processing}:
+    \begin{itemize}
+        \item Dekódovanie tokenov späť na text
+        \item Odstránenie špeciálnych tokenov
+        \item Validácia výstupu
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Metriky a vyhodnotenie}
+Pre vyhodnotenie kvality dešifrovania používame nasledujúce metriky:
+
+\begin{itemize}
+    \item \textbf{Charakterová presnosť}:
+    \begin{itemize}
+        \item Porovnanie vygenerovaného textu so skutočným plaintextom znak po znaku
+        \item Ignorovanie veľkosti písmen a medzier
+        \item Výpočet percentuálnej zhody pomocou SequenceMatcher
+    \end{itemize}
+    
+    \item \textbf{Čitateľnosť}:
+    \begin{itemize}
+        \item Percento slov vo výstupe, ktoré sú reálne slová
+        \item Kontrola proti slovníku alebo jazykovému modelu
+        \item Hodnotenie plynulosti a gramatickej správnosti
+    \end{itemize}
+    
+    \item \textbf{Sémantická podobnosť}:
+    \begin{itemize}
+        \item Porovnanie významu dešifrovaného textu s originálom
+        \item Využitie embeddings alebo BLEU skóre
+        \item Subjektívne hodnotenie kontextu
+    \end{itemize}
+\end{itemize}
+
+\subsection{Optimalizácia výkonu}
+Pre zlepšenie výkonu modelu sme implementovali:
+
+\begin{itemize}
+    \item Caching modelov v pamäti
+    \item Batch processing pre viacero požiadaviek
+    \item Optimalizácia hyperparametrov generovania
+    \item Možnosť paralelného spracovania na GPU
+\end{itemize}
+
+\end{document} 
