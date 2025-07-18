@@ -1,156 +1,127 @@
 import os
-import pandas as pd
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    TrainingArguments,
-    Trainer,
-    DataCollatorForLanguageModeling
-)
 import torch
-from torch.utils.data import Dataset
+import pandas as pd
+from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
+from torch.utils.data import Dataset, ConcatDataset
+from sklearn.model_selection import train_test_split
 import numpy as np
-from typing import List, Dict
-import json
+from tqdm import tqdm
 
 class CipherDataset(Dataset):
-    def __init__(self, texts: List[str], tokenizer):
-        self.encodings = tokenizer(texts, truncation=True, padding=True, max_length=128)
-        
-    def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item['labels'] = item['input_ids'].clone()
-        return item
-    
+    def __init__(self, texts, tokenizer, max_length=256):
+        self.texts = texts
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
     def __len__(self):
-        return len(self.encodings.input_ids)
+        return len(self.texts)
 
-def load_and_format_data(file_path: str) -> List[str]:
-    """Load and format data from CSV file."""
-    df = pd.read_csv(file_path)
-    # Format as input-output pairs
-    texts = []
-    for _, row in df.iterrows():
-        text = f"Encrypted: {row['encrypted_text']}\nDecrypted: {row['original_text']}"
-        texts.append(text)
-    return texts
+    def __getitem__(self, idx):
+        item = self.texts[idx]
+        encoding = self.tokenizer(
+            item,
+            truncation=True,
+            padding="max_length",
+            max_length=self.max_length,
+            return_tensors="pt"
+        )
+        input_ids = encoding["input_ids"].squeeze()
+        attention_mask = encoding["attention_mask"].squeeze()
+        labels = input_ids.clone()
+        return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
 
-def train_model_variant(
-    model_name: str,
-    train_files: Dict[str, str],
-    val_files: Dict[str, str],
-    output_dir: str,
-    training_args: Dict
-) -> None:
-    """Train a model variant with specified parameters."""
+def load_and_format_data(cipher_files):
+    formatted_data = []
     
-    # Initialize tokenizer and model
+    for cipher_type, file_path in cipher_files.items():
+        if not os.path.exists(file_path):
+            print(f"Warning: File {file_path} not found, skipping...")
+            continue
+            
+        df = pd.read_csv(file_path)
+        for _, row in df.iterrows():
+            # Форматируем текст в зависимости от операции
+            formatted_text = f"Operation: {row['operation']}\nCipher: {row['cipher_type']}\nInput: {row['input_text']}\nOutput: {row['output_text']}"
+            formatted_data.append(formatted_text)
+    
+    return formatted_data
+
+def main():
+    # Используем более мощную модель
+    model_name = "gpt2-medium"  # или "EleutherAI/gpt-neo-125M" если есть достаточно памяти
+    
+    print(f"Loading {model_name} model and tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    
     model = AutoModelForCausalLM.from_pretrained(model_name)
     
-    # Enable gradient checkpointing for memory efficiency
+    # Включаем gradient checkpointing для экономии памяти
     model.gradient_checkpointing_enable()
     model.config.use_cache = False
+
+    # Определяем файлы для каждого типа шифра
+    train_files = {
+        'vigenere': 'data/train_vigenere.csv',
+        'substitution': 'data/train_substitution.csv'
+    }
     
-    # Load and combine training data from all languages
-    train_texts = []
-    for lang, file_path in train_files.items():
-        texts = load_and_format_data(file_path)
-        train_texts.extend(texts)
+    val_files = {
+        'vigenere': 'data/val_vigenere.csv',
+        'substitution': 'data/val_substitution.csv'
+    }
+
+    print("Loading and formatting training data...")
+    train_texts = load_and_format_data(train_files)
     
-    # Load and combine validation data
-    val_texts = []
-    for lang, file_path in val_files.items():
-        texts = load_and_format_data(file_path)
-        val_texts.extend(texts)
-    
-    # Create datasets
+    print("Loading and formatting validation data...")
+    val_texts = load_and_format_data(val_files)
+
+    print("Creating datasets...")
     train_dataset = CipherDataset(train_texts, tokenizer)
     val_dataset = CipherDataset(val_texts, tokenizer)
-    
-    # Setup training arguments
+
+    # Настройка параметров обучения
     training_args = TrainingArguments(
-        output_dir=output_dir,
-        **training_args
+        output_dir="./results",
+        num_train_epochs=5,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
+        gradient_accumulation_steps=2,
+        eval_steps=500,
+        logging_steps=100,
+        save_steps=1000,
+        warmup_steps=1000,
+        learning_rate=2e-5,
+        weight_decay=0.01,
+        logging_dir="./logs",
+        save_total_limit=2,
+        fp16=True,
+        evaluation_strategy="steps",
+        save_strategy="steps",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss"
     )
-    
-    # Initialize trainer
+
+    print("Initializing trainer...")
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
     )
-    
-    # Train the model
-    trainer.train()
-    
-    # Save the model and tokenizer
-    trainer.save_model()
-    tokenizer.save_pretrained(output_dir)
-    
-    print(f"✅ Model trained and saved to '{output_dir}'")
 
-def main():
-    # Base model configurations
-    model_variants = {
-        "multilingual": {
-            "model_name": "gpt2",
-            "training_args": {
-                "num_train_epochs": 3,
-                "per_device_train_batch_size": 4,
-                "per_device_eval_batch_size": 4,
-                "gradient_accumulation_steps": 2,
-                "learning_rate": 5e-5,
-                "weight_decay": 0.01,
-                "warmup_steps": 500,
-                "eval_steps": 500,
-                "save_steps": 1000,
-                "logging_steps": 100,
-                "fp16": True
-            }
-        },
-        "gpt2_large": {
-            "model_name": "gpt2-large",
-            "training_args": {
-                "num_train_epochs": 2,
-                "per_device_train_batch_size": 2,
-                "per_device_eval_batch_size": 2,
-                "gradient_accumulation_steps": 4,
-                "learning_rate": 3e-5,
-                "weight_decay": 0.01,
-                "warmup_steps": 1000,
-                "eval_steps": 500,
-                "save_steps": 1000,
-                "logging_steps": 100,
-                "fp16": True
-            }
-        }
-    }
-    
-    # Data files
-    languages = ["english", "slovak", "ukrainian"]
-    train_files = {lang: f"data/train_{lang[:2]}.csv" for lang in languages}
-    val_files = {lang: f"data/val_{lang[:2]}.csv" for lang in languages}
-    
-    # Train each model variant
-    for variant_name, config in model_variants.items():
-        print(f"\nTraining {variant_name} model...")
-        output_dir = f"models/{variant_name}"
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Save configuration
-        with open(f"{output_dir}/config.json", "w") as f:
-            json.dump(config, f, indent=2)
-        
-        train_model_variant(
-            model_name=config["model_name"],
-            train_files=train_files,
-            val_files=val_files,
-            output_dir=output_dir,
-            training_args=config["training_args"]
-        )
+    print("Starting training...")
+    trainer.train()
+
+    print("Saving model...")
+    output_dir = "fine_tuned_model_multi"
+    os.makedirs(output_dir, exist_ok=True)
+    trainer.save_model(output_dir)
+    tokenizer.save_pretrained(output_dir)
+
+    print(f"✅ Model fine-tuned and saved to '{output_dir}/'")
 
 if __name__ == "__main__":
     main() 
