@@ -40,15 +40,15 @@ def load_and_format_data(cipher_files):
             
         df = pd.read_csv(file_path)
         for _, row in df.iterrows():
-            # Форматируем текст в зависимости от операции
-            formatted_text = f"Operation: {row['operation']}\nCipher: {row['cipher_type']}\nInput: {row['input_text']}\nOutput: {row['output_text']}"
+            # Format text based on operation
+            formatted_text = f"Operation: {row['operation']}\nCipher: {cipher_type}\nInput: {row['input_text']}\nOutput: {row['output_text']}"
             formatted_data.append(formatted_text)
     
     return formatted_data
 
 def main():
-    # Используем более мощную модель
-    model_name = "gpt2-medium"  # или "EleutherAI/gpt-neo-125M" если есть достаточно памяти
+    # Use a more powerful model
+    model_name = "gpt2-medium"  # or "EleutherAI/gpt-neo-2.7B" if enough memory
     
     print(f"Loading {model_name} model and tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -57,19 +57,19 @@ def main():
     
     model = AutoModelForCausalLM.from_pretrained(model_name)
     
-    # Включаем gradient checkpointing для экономии памяти
+    # Enable gradient checkpointing to save memory
     model.gradient_checkpointing_enable()
     model.config.use_cache = False
 
-    # Определяем файлы для каждого типа шифра
+    # Define files for each cipher type
     train_files = {
-        'vigenere': 'data/train_vigenere.csv',
-        'substitution': 'data/train_substitution.csv'
+        'vigenere': 'data/train_enhanced_vigenere.csv',
+        'substitution': 'data/train_enhanced_substitution.csv'
     }
     
     val_files = {
-        'vigenere': 'data/val_vigenere.csv',
-        'substitution': 'data/val_substitution.csv'
+        'vigenere': 'data/val_enhanced_vigenere.csv',
+        'substitution': 'data/val_enhanced_substitution.csv'
     }
 
     print("Loading and formatting training data...")
@@ -82,13 +82,14 @@ def main():
     train_dataset = CipherDataset(train_texts, tokenizer)
     val_dataset = CipherDataset(val_texts, tokenizer)
 
-    # Настройка параметров обучения
+    # Configure training parameters
     training_args = TrainingArguments(
         output_dir="./results",
         num_train_epochs=5,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=4,
         gradient_accumulation_steps=2,
+        eval_accumulation_steps=2,
         eval_steps=500,
         logging_steps=100,
         save_steps=1000,
@@ -98,10 +99,12 @@ def main():
         logging_dir="./logs",
         save_total_limit=2,
         fp16=True,
-        evaluation_strategy="steps",
+        evaluation_strategy="steps",  # Changed from eval_strategy
         save_strategy="steps",
         load_best_model_at_end=True,
-        metric_for_best_model="eval_loss"
+        metric_for_best_model="eval_loss",
+        ddp_find_unused_parameters=False,  # Important for distributed training
+        report_to="tensorboard"
     )
 
     print("Initializing trainer...")
