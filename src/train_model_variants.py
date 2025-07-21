@@ -2,9 +2,7 @@ import os
 import torch
 import pandas as pd
 from transformers import AutoModelForCausalLM, AutoTokenizer, Trainer, TrainingArguments
-from torch.utils.data import Dataset, ConcatDataset
-from sklearn.model_selection import train_test_split
-import numpy as np
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
 class CipherDataset(Dataset):
@@ -40,7 +38,6 @@ def load_and_format_data(cipher_files):
             
         df = pd.read_csv(file_path)
         for _, row in df.iterrows():
-            # Format text based on operation
             formatted_text = f"Operation: {row['operation']}\nCipher: {cipher_type}\nInput: {row['input_text']}\nOutput: {row['output_text']}"
             formatted_data.append(formatted_text)
     
@@ -48,7 +45,7 @@ def load_and_format_data(cipher_files):
 
 def main():
     # Use a more powerful model
-    model_name = "gpt2-medium"  # or "EleutherAI/gpt-neo-2.7B" if enough memory
+    model_name = "gpt2-medium"
     
     print(f"Loading {model_name} model and tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -89,7 +86,6 @@ def main():
         per_device_train_batch_size=4,
         per_device_eval_batch_size=4,
         gradient_accumulation_steps=2,
-        eval_accumulation_steps=2,
         eval_steps=500,
         logging_steps=100,
         save_steps=1000,
@@ -99,12 +95,10 @@ def main():
         logging_dir="./logs",
         save_total_limit=2,
         fp16=True,
-        evaluation_strategy="steps",  # Changed from eval_strategy
-        save_strategy="steps",
         load_best_model_at_end=True,
-        metric_for_best_model="eval_loss",
-        ddp_find_unused_parameters=False,  # Important for distributed training
-        report_to="tensorboard"
+        metric_for_best_model="loss",
+        greater_is_better=False,
+        ddp_find_unused_parameters=False
     )
 
     print("Initializing trainer...")
