@@ -20,13 +20,16 @@ cd $PROJECT_DIR || exit 1
 
 # Remove existing conda environment if it exists
 conda deactivate
-conda env remove -n cypher -y
+conda env remove -n cypher -y || true
 
-# Create and activate conda environment
-conda create -n cypher python=3.12 -y
-conda activate cypher
+# Create and activate conda environment with Python 3.10
+conda create -n cypher python=3.10 -y
+conda activate cypher || exit 1
 
-# Install dependencies
+# Install PyTorch first
+pip install torch==2.2.0
+
+# Install other dependencies
 pip install -r requirements.txt || exit 1
 
 # Create directories for results and models if they don't exist
